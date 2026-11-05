@@ -1,7 +1,8 @@
 /* global L, APP_CONFIG */
-import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/+esm";
-import { routeLeg } from "./routing.js?v=202611051557";
-import { initGlass } from "./glass.js?v=202611051557";
+/* global supabase */
+const { createClient } = supabase; // knihovna Supabase z index.html (jeden soubor s kontrolou integrity)
+import { routeLeg } from "./routing.js?v=202611051624";
+import { initGlass } from "./glass.js?v=202611051624";
 
 const sb = createClient(APP_CONFIG.supabaseUrl, APP_CONFIG.supabaseKey, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
@@ -22,7 +23,7 @@ const state = {
   activeTrip: null,        // id cesty zobrazené na mapě
   filter: new Set(),       // prázdné = všechny kategorie
   hideVisited: false,      // skrýt navštívená místa
-  radiusKm: null,          // null = všude
+  area: null,              // Okolí: { lat, lng, km, fromMe } nebo null = všude
   me: null,
   loaded: false,
 };
@@ -72,7 +73,8 @@ const distanceKm = (a, b) => {
   return 2 * R * Math.asin(Math.sqrt(x));
 };
 const fmtDist = (km) => km < 1 ? `${Math.round(km * 100) * 10} m` : km < 10 ? `${km.toFixed(1).replace(".", ",")} km` : `${Math.round(km).toLocaleString("cs-CZ")} km`;
-const distTo = (p) => (state.me ? distanceKm(state.me, p) : null);
+const refPoint = () => state.area ?? state.me;
+const distTo = (p) => (refPoint() ? distanceKm(refPoint(), p) : null);
 const navUrl = (p) => `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}`;
 const plural = (n, a, b, c) => `${n} ${n === 1 ? a : n >= 2 && n <= 4 ? b : c}`;
 const fmtDate = (iso) => new Date(iso).toLocaleDateString("cs-CZ", { day: "numeric", month: "numeric", year: "numeric" });
@@ -102,6 +104,7 @@ document.addEventListener("pointerdown", moveLight, { passive: true });
 
 // ---------- data ----------
 async function loadPlaces() {
+  lastLoad = Date.now();
   const [cats, feed] = await Promise.all([
     sb.from("categories").select("*").order("sort"),
     sb.from("places_feed").select("*").order("reel_created_at", { ascending: false }),
@@ -193,15 +196,31 @@ function visiblePlaces() {
     if (state.mine && !isSaved(p)) return false;
     if (state.filter.size && !state.filter.has(p.category)) return false;
     if (state.hideVisited && visited(p)) return false;
-    if (state.radiusKm && state.me && distanceKm(state.me, p) > state.radiusKm) return false;
+    if (state.area && distanceKm(state.area, p) > state.area.km) return false;
     return true;
   });
 }
 
+const markerCache = new Map(); // id místa -> { marker, key }
+function markerFor(p) {
+  const key = `${p.category}|${visited(p)}|${isSaved(p)}|${p.lat},${p.lng}`;
+  let entry = markerCache.get(p.id);
+  if (!entry) {
+    const marker = L.marker([p.lat, p.lng], { icon: pinIcon(p), title: p.name });
+    marker.on("click", () => openPlace(marker.place));
+    entry = { marker, key };
+    markerCache.set(p.id, entry);
+  } else if (entry.key !== key) {
+    entry.marker.setLatLng([p.lat, p.lng]).setIcon(pinIcon(p));
+    entry.key = key;
+  }
+  entry.marker.place = p;
+  return entry.marker;
+}
 function renderMarkers() {
   cluster.clearLayers();
   const ps = visiblePlaces();
-  cluster.addLayers(ps.map((p) => L.marker([p.lat, p.lng], { icon: pinIcon(p), title: p.name }).on("click", () => openPlace(p))));
+  cluster.addLayers(ps.map(markerFor));
   if (!fitted && ps.length) {
     fitted = true;
     map.fitBounds(ps.map((p) => [p.lat, p.lng]), { paddingTopLeft: [30, 150], paddingBottomRight: [30, 120], maxZoom: 13 });
@@ -222,10 +241,10 @@ function renderHeader() {
   $("#cnt-mine").textContent = !state.user ? "přihlas se"
     : `${plural(state.saved.size, "místo", "místa", "míst")}${state.trips.length ? ` · ${plural(state.trips.length, "cesta", "cesty", "cest")}` : ""}`;
   const rb = $("#btn-radius");
-  rb.classList.toggle("tint", !!state.radiusKm);
-  rb.classList.toggle("lens", !state.radiusKm);
-  rb.classList.toggle("on", !!state.radiusKm);
-  $("#radius-label").textContent = state.radiusKm ? `Do ${state.radiusKm} km` : "Okolí";
+  rb.classList.toggle("tint", !!state.area);
+  rb.classList.toggle("lens", !state.area);
+  rb.classList.toggle("on", !!state.area);
+  $("#radius-label").textContent = state.area ? `${state.area.km} km` : "Okolí";
 }
 
 let styleShown = "community";
@@ -302,11 +321,30 @@ function renderAccountButton() {
   }
 }
 
+let areaCircle = null, areaHandle = null;
 function renderRadius() {
-  radiusCircle?.remove();
-  radiusCircle = null;
-  if (state.radiusKm && state.me) {
-    radiusCircle = L.circle([state.me.lat, state.me.lng], { radius: state.radiusKm * 1000, color: "#6f5cff", weight: 1.5, dashArray: "6 6", fillOpacity: 0.05, interactive: false }).addTo(map);
+  if (!state.area) {
+    areaCircle?.remove(); areaHandle?.remove();
+    areaCircle = areaHandle = null;
+    return;
+  }
+  const ll = [state.area.lat, state.area.lng];
+  if (!areaCircle) {
+    areaCircle = L.circle(ll, { radius: state.area.km * 1000, color: "#6f5cff", weight: 2, dashArray: "8 8", fillColor: "#6f5cff", fillOpacity: 0.07, interactive: false }).addTo(map);
+    areaHandle = L.marker(ll, {
+      draggable: true, autoPan: true, zIndexOffset: 1500, title: "Přetáhni střed okolí",
+      icon: L.divIcon({ className: "", html: '<div class="area-handle"><span></span></div>', iconSize: [44, 44] }),
+    }).addTo(map);
+    areaHandle.on("drag", (e) => areaCircle.setLatLng(e.latlng));
+    areaHandle.on("dragend", (e) => {
+      const c = e.target.getLatLng();
+      state.area = { ...state.area, lat: c.lat, lng: c.lng, fromMe: false };
+      render();
+      toast(`Okolí přesunuto · ${plural(visiblePlaces().length, "místo", "místa", "míst")}`);
+    });
+  } else {
+    areaCircle.setLatLng(ll).setRadius(state.area.km * 1000);
+    areaHandle.setLatLng(ll);
   }
 }
 
@@ -329,7 +367,7 @@ function startLocate(center = true) {
     return;
   }
   let first = center;
-  $("#btn-locate").classList.add("active", "lens");
+
   watchId = navigator.geolocation.watchPosition((pos) => {
     const firstFix = !state.me;
     state.me = { lat: pos.coords.latitude, lng: pos.coords.longitude };
@@ -348,8 +386,7 @@ function startLocate(center = true) {
       onFirstFix = null;
     }
   }, (err) => {
-    $("#btn-locate").classList.remove("active", "lens");
-    $("#btn-locate").style.backdropFilter = "";
+
     navigator.geolocation.clearWatch(watchId);
     watchId = null;
     toast(err.code === 1 ? "Přístup k poloze je zakázaný – povol ho v nastavení prohlížeče" : "Polohu se nepodařilo zjistit");
@@ -610,7 +647,7 @@ function openList(tab = listTab) {
 
   const pool = tab === "saved" ? state.places.filter(isSaved) : visiblePlaces();
   const items = pool.slice();
-  const near = listSort === "near" && state.me;
+  const near = listSort === "near" && refPoint();
   items.sort((a, b) => near ? distTo(a) - distTo(b) : new Date(b.reel_created_at) - new Date(a.reel_created_at));
   const empty = tab === "saved"
     ? (state.user ? "Zatím nemáš uložená žádná místa. Otevři místo na mapě a dej Uložit do mé mapy." : "Přihlas se a ukládej si místa do vlastní mapy.")
@@ -978,23 +1015,53 @@ function renderTripLayer() {
 }
 
 // ---------- vzdálenost ----------
+// Okolí: kruh se zvolenou vzdáleností kolem tvé polohy nebo libovolného místa na mapě.
+let pickingArea = false;
+function applyArea(area, fly = true) {
+  state.area = area;
+  closeSheet();
+  render();
+  if (area && fly) map.flyToBounds(L.latLng(area.lat, area.lng).toBounds(area.km * 2000), { paddingTopLeft: [20, 150], paddingBottomRight: [20, 110], duration: 0.7 });
+}
+function startAreaPick(km) {
+  closeSheet();
+  pickingArea = km;
+  toast("Klepni do mapy tam, kolem čeho tě zajímá okolí");
+  document.body.classList.add("picking");
+}
+map.on("click", (e) => {
+  if (!pickingArea) return;
+  const km = pickingArea;
+  pickingArea = false;
+  document.body.classList.remove("picking");
+  applyArea({ lat: e.latlng.lat, lng: e.latlng.lng, km, fromMe: false });
+  toast("Střed okolí můžeš kdykoli přetáhnout");
+});
+
 function openRadius() {
-  const pick = (km) => {
-    state.radiusKm = km;
-    closeSheet();
-    const apply = () => {
-      render();
-      if (km && state.me) map.flyToBounds(L.latLng(state.me.lat, state.me.lng).toBounds(km * 2000), { paddingTopLeft: [20, 140], paddingBottomRight: [20, 110] });
-    };
-    if (km && !state.me) { onFirstFix = apply; startLocate(false); toast("Zjišťuji polohu…"); }
-    apply();
+  // Při prvním otevření si řekneme o polohu (výchozí střed okolí).
+  if (!state.me && watchId == null) { onFirstFix = () => currentSheet === "radius" && openRadius(); startLocate(false); }
+  const cur = state.area;
+  let km = cur?.km ?? 5;
+  const center = () => cur && !cur.fromMe ? cur : state.me;
+  const count = (k) => { const c = center(); return c ? state.places.filter((p) => distanceKm(c, p) <= k).length : null; };
+  const grid = h("div", { class: "radius-grid" });
+  const drawGrid = () => grid.replaceChildren(...RADII.map((k) => h("button", { class: km === k ? "on" : "", onclick: () => { km = k; drawGrid(); if (cur) applyArea({ ...cur, km }, true); } }, `${k} km`,
+    h("small", {}, count(k) == null ? "v okolí" : plural(count(k), "místo", "místa", "míst")))));
+  drawGrid();
+  const useMe = () => {
+    if (!state.me) { onFirstFix = () => applyArea({ lat: state.me.lat, lng: state.me.lng, km, fromMe: true }); startLocate(false); toast("Zjišťuji polohu…"); closeSheet(); return; }
+    applyArea({ lat: state.me.lat, lng: state.me.lng, km, fromMe: true });
   };
-  openSheet("radius", "Místa v okolí",
-    h("p", { class: "muted" }, "Ukážu jen místa do zvolené vzdálenosti od tebe."),
-    h("div", { class: "radius-grid" },
-      RADII.map((km) => h("button", { class: state.radiusKm === km ? "on" : "", onclick: () => pick(km) }, `${km} km`,
-        h("small", {}, state.me ? plural(state.places.filter((p) => distanceKm(state.me, p) <= km).length, "místo", "místa", "míst") : "v okolí"))),
-      h("button", { class: state.radiusKm ? "" : "on", onclick: () => pick(null) }, "Všude", h("small", {}, plural(state.places.length, "místo", "místa", "míst")))));
+  openSheet("radius", "Okolí",
+    h("p", { class: "muted" }, cur ? "Na mapě vidíš jen místa uvnitř kruhu. Střed kruhu můžeš přetáhnout prstem." : "Vyber vzdálenost a střed – ukážu jen místa uvnitř kruhu."),
+    h("div", { class: "section-label" }, "Vzdálenost"),
+    grid,
+    h("div", { class: "section-label" }, "Střed okolí"),
+    h("div", { class: "btn-grid", style: "margin-top:0" },
+      h("button", { class: `btn ${cur?.fromMe ? "lg tint" : "lg"}`, onclick: useMe }, icon("nav"), state.me ? "Moje poloha" : "Moje poloha (povolit)"),
+      h("button", { class: `btn ${cur && !cur.fromMe ? "lg tint" : "lg"}`, onclick: () => startAreaPick(km) }, icon("map"), "Vybrat na mapě")),
+    cur ? h("button", { class: "btn lg btn-block", style: "margin-top:12px", onclick: () => applyArea(null, false) }, icon("x"), "Zrušit okolí – ukázat všechno") : null);
 }
 
 // ---------- tipy ----------
@@ -1015,7 +1082,7 @@ function openRecommend() {
 
 function recommend(categoryId) {
   let pool = state.places.filter((p) => !visited(p) && (!state.mine || isSaved(p)) && (!categoryId || p.category === categoryId));
-  pool.sort((a, b) => state.me ? distTo(a) - distTo(b) : new Date(b.reel_created_at) - new Date(a.reel_created_at));
+  pool.sort((a, b) => refPoint() ? distTo(a) - distTo(b) : new Date(b.reel_created_at) - new Date(a.reel_created_at));
   if (!categoryId && pool.length > 1) {
     const near = pool.slice(0, 8);
     const pick = near[Math.floor(Math.random() * near.length)];
@@ -1127,7 +1194,7 @@ function openAccount(reason) {
   if (state.user) return openProfile();
   let mode = "login";
   const email = h("input", { type: "email", placeholder: "E-mail", autocomplete: "email", required: true });
-  const pass = h("input", { type: "password", placeholder: "Heslo (aspoň 6 znaků)", autocomplete: "current-password", minlength: 6, required: true });
+  const pass = h("input", { type: "password", placeholder: "Heslo (aspoň 8 znaků)", autocomplete: "current-password", minlength: 8, required: true });
   const nick = h("input", { type: "text", placeholder: "Přezdívka (uvidí ji ostatní)", maxlength: 24, autocomplete: "nickname" });
   const err = h("p", { class: "error" });
   const submit = h("button", { class: "btn lg tint btn-block", type: "submit" }, "Přihlásit se");
@@ -1155,7 +1222,7 @@ function openAccount(reason) {
     if (error) {
       err.textContent = /invalid login/i.test(error.message) ? "Špatný e-mail nebo heslo."
         : /already registered/i.test(error.message) ? "Účet s tímto e-mailem už existuje – přihlas se."
-        : /password/i.test(error.message) ? "Heslo musí mít aspoň 6 znaků."
+        : /password/i.test(error.message) ? "Heslo musí mít aspoň 8 znaků."
         : error.message;
       return;
     }
@@ -1193,7 +1260,7 @@ async function openProfile() {
 }
 
 // ---------- start ----------
-$("#btn-locate").addEventListener("click", () => startLocate(true));
+$("#btn-trips").addEventListener("click", () => openList("trips"));
 $("#btn-list").addEventListener("click", () => openList(state.mine ? (listTab === "trips" ? "trips" : "saved") : "places"));
 $("#btn-recommend").addEventListener("click", openRecommend);
 $("#btn-add").addEventListener("click", () => openAdd());
@@ -1270,7 +1337,10 @@ function boot() {
   if (!shared && !localStorage.getItem("mm.onboarded")) setTimeout(() => { if ($("#sheet").hidden) openOnboarding(); }, 900);
   navigator.permissions?.query({ name: "geolocation" }).then((s) => { if (s.state === "granted") startLocate(false); }).catch(() => {});
 }
-document.addEventListener("visibilitychange", () => { if (!document.hidden) loadPlaces(); });
+let lastLoad = 0;
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && Date.now() - lastLoad > 60_000) loadPlaces();
+});
 initGlass();
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then((r) => r.update()).catch(() => {});
 boot();

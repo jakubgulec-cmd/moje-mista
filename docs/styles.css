@@ -510,3 +510,10 @@ body.mine #map::before { content: ""; position: absolute; inset: 0; z-index: 399
 .older .item { padding: 8px 10px; }
 .ig-dot { width: 32px; height: 32px; flex: none; border-radius: 50%; display: grid; place-items: center; color: #fff; background: linear-gradient(45deg, #feda75, #fa7e1e, #d62976, #962fbf, #4f5bd5); }
 .ig-dot svg { width: 16px; height: 16px; }
+
+/* Okolí: střed kruhu jde přetáhnout */
+.area-handle { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; cursor: grab;
+  background: rgba(255,255,255,.75); box-shadow: inset 0 0 0 .6px #fff, inset 1px 1.5px 1px -.5px #fff, 0 6px 16px -6px rgba(10,14,40,.45);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.area-handle span { width: 16px; height: 16px; border-radius: 50%; background: var(--grad); box-shadow: 0 0 0 4px rgba(111,92,255,.2); }
+body.picking #map { cursor: crosshair; }

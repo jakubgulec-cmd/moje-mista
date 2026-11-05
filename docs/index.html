@@ -11,14 +11,18 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Moje místa">
-  <link rel="manifest" href="manifest.webmanifest?v=202611051557">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob: https:; media-src https://uuinstagram.com https://*.cdninstagram.com https://*.fbcdn.net blob:; connect-src 'self' https://okiuawfcatqpzwultuud.supabase.co wss://okiuawfcatqpzwultuud.supabase.co https://tiles.openfreemap.org https://routing.openstreetmap.de https://api.transitous.org https://unpkg.com https://cdn.jsdelivr.net; worker-src 'self' blob:; child-src blob:; font-src 'self' data:; manifest-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'">
+  <link rel="preconnect" href="https://okiuawfcatqpzwultuud.supabase.co" crossorigin>
+  <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
+  <link rel="preconnect" href="https://unpkg.com" crossorigin>
+  <link rel="manifest" href="manifest.webmanifest?v=202611051624">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css"
         integrity="sha384-uTttxo/aOKbdE5RlD/SPzSDoDmNvGlUYPjONi2MN/b7c9HPSvW07OIuyP7uL6jxK" crossorigin="">
-  <link rel="stylesheet" href="styles.css?v=202611051557">
+  <link rel="stylesheet" href="styles.css?v=202611051624">
 </head>
 <body>
 
@@ -46,20 +50,20 @@
   </header>
 
   <nav class="dock lg lens" aria-label="Akce">
-    <button id="btn-locate" class="dock-btn" aria-label="Moje poloha">
-      <svg viewBox="0 0 24 24"><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2.2"/></svg>
-      <span>Poloha</span>
-    </button>
     <button id="btn-list" class="dock-btn" aria-label="Seznam míst">
       <svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.1"/><circle cx="4.5" cy="12" r="1.1"/><circle cx="4.5" cy="18" r="1.1"/></svg>
       <span>Seznam</span>
     </button>
-    <button id="btn-add" class="dock-main lg tint" aria-label="Přidat reelsko">
-      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-    </button>
     <button id="btn-recommend" class="dock-btn" aria-label="Tipy na místa">
       <svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.9L19 9.7l-5.2 1.8L12 16.5l-1.8-5L5 9.7l5.2-1.8L12 3Z"/><path d="M18.5 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7.7-1.8Z"/></svg>
       <span>Tipy</span>
+    </button>
+    <button id="btn-add" class="dock-main lg tint" aria-label="Přidat reelsko">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+    <button id="btn-trips" class="dock-btn" aria-label="Cesty">
+      <svg viewBox="0 0 24 24"><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="6" r="2.5"/><path d="M8.5 18H15a3.5 3.5 0 0 0 0-7H9a3.5 3.5 0 0 1 0-7h6.5"/></svg>
+      <span>Cesty</span>
     </button>
     <button id="btn-account" class="dock-btn" aria-label="Účet">
       <span id="avatar" class="avatar"><svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20c1.4-3.6 4.2-5.4 7.5-5.4s6.1 1.8 7.5 5.4"/></svg></span>
@@ -92,7 +96,9 @@
           integrity="sha384-5+cfbwT0iiub6VsQAdn6yz16nr6sDiQoHx6tm4O8OVYXHYOxcffFmCJBL0dgdvGp" crossorigin=""></script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"
           integrity="sha384-tXYNKOHx4T02jMP7YYCtBxPIv1B5gaA5mcVPBzqMp6d7VzWzxJgI2aWF/nJLrQdS" crossorigin=""></script>
-  <script src="config.js?v=202611051557"></script>
-  <script type="module" src="app.js?v=202611051557"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js"
+          integrity="sha384-uteMfOloLDGt042uDz+xHGF3ym63/WQ6rFq7murQRG8Ih7QrXGEGNtWd8688sb4O" crossorigin=""></script>
+  <script src="config.js?v=202611051624"></script>
+  <script type="module" src="app.js?v=202611051624"></script>
 </body>
 </html>

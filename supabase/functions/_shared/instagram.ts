@@ -17,9 +17,20 @@ export interface Media {
 }
 
 const URL_RE = /https?:\/\/(?:www\.|m\.)?instagram\.com\/(?:[\w.]+\/)?(?:reel|reels|p|tv)\/([A-Za-z0-9_-]{5,})/i;
-const INSTAFIX = "https://uuinstagram.com";
+// Zdroj jde vyměnit bez úpravy kódu (secret INSTAFIX_HOST), kdyby služba přestala fungovat.
+const INSTAFIX = Deno.env.get("INSTAFIX_HOST") ?? "https://uuinstagram.com";
+// Video/obrázek stahujeme jen z těchto domén (ochrana proti podvrženým adresám).
+const MEDIA_HOSTS = [new URL(INSTAFIX).hostname, "cdninstagram.com", "fbcdn.net", "instagram.com"];
+const allowedMedia = (u: string) => {
+  try {
+    const { protocol, hostname } = new URL(u);
+    return protocol === "https:" && MEDIA_HOSTS.some((h) => hostname === h || hostname.endsWith("." + h));
+  } catch {
+    return false;
+  }
+};
 const BOT_UA = "Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)";
-const MAX_MEDIA_BYTES = 60_000_000; // delší videa už nemá smysl kontrolovat
+const MAX_MEDIA_BYTES = 40_000_000; // delší videa už nemá smysl kontrolovat
 
 export function parseInstagramUrl(text: string): { shortcode: string; url: string } | null {
   const m = text.match(URL_RE);
@@ -69,9 +80,10 @@ export async function fetchReel(shortcode: string, url: string): Promise<ReelInf
 
 /** Stáhne video nebo obrázek pro AI kontrolu. */
 export async function fetchMedia(url: string): Promise<Media | null> {
+  if (!allowedMedia(url)) return null;
   try {
     const res = await fetch(url, { headers: { "User-Agent": BOT_UA }, signal: AbortSignal.timeout(40000) });
-    if (!res.ok) return null;
+    if (!res.ok || !allowedMedia(res.url)) return null;
     const mimeType = res.headers.get("content-type")?.split(";")[0] ?? "";
     if (!mimeType.startsWith("video/") && !mimeType.startsWith("image/")) return null;
     const len = Number(res.headers.get("content-length") ?? 0);

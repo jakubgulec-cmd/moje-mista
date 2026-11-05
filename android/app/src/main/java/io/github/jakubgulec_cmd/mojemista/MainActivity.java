@@ -29,6 +29,7 @@ public class MainActivity extends Activity {
     private static final int REQ_LOCATION = 1;
 
     private WebView web;
+    private volatile String currentHost = "";
     private GeolocationPermissions.Callback geoCallback;
     private String geoOrigin;
 
@@ -45,11 +46,20 @@ public class MainActivity extends Activity {
         s.setDatabaseEnabled(true);
         s.setGeolocationEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(true);
+        // Bezpečnost: žádný přístup k souborům v telefonu, jen web přes HTTPS.
+        s.setAllowFileAccess(false);
+        s.setAllowContentAccess(false);
+        s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         s.setUserAgentString(s.getUserAgentString() + " MojeMistaApp/2");
 
         web.addJavascriptInterface(new Bridge(), "MojeMistaApp");
 
         web.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                currentHost = Uri.parse(url).getHost() == null ? "" : Uri.parse(url).getHost();
+            }
+
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
@@ -158,6 +168,7 @@ public class MainActivity extends Activity {
     private class Bridge {
         @JavascriptInterface
         public String readClipboard() {
+            if (!HOST.equals(currentHost)) return ""; // schránku čte jen naše stránka
             ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
             if (cm == null || !cm.hasPrimaryClip()) return "";
             ClipData clip = cm.getPrimaryClip();
