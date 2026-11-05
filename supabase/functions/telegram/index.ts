@@ -7,7 +7,6 @@ declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 const TOKEN = Deno.env.get("TELEGRAM_TOKEN")!;
 const WEBHOOK_SECRET = Deno.env.get("TELEGRAM_WEBHOOK_SECRET")!;
 const APP_URL = Deno.env.get("APP_URL") ?? "";
-const APP_KEY = Deno.env.get("APP_KEY") ?? "";
 
 async function tg(method: string, body: Record<string, unknown>) {
   const res = await fetch(`https://api.telegram.org/bot${TOKEN}/${method}`, {
@@ -21,7 +20,7 @@ async function tg(method: string, body: Record<string, unknown>) {
 }
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-const appLink = () => `${APP_URL}#k=${encodeURIComponent(APP_KEY)}`;
+const appLink = () => APP_URL;
 
 function formatResult(r: ProcessResult): string {
   if (r.status === "no_data") {
@@ -61,12 +60,6 @@ async function handleMessage(chatId: number, text: string) {
   }
 
   if (owner !== String(chatId)) return tg("sendMessage", { chat_id: chatId, text: "Tohle je soukromý bot." });
-
-  if (text.startsWith("/klic")) {
-    return tg("sendMessage", { chat_id: chatId, parse_mode: "HTML", text: `🔑 Přístupový klíč do aplikace (pro iPhone po přidání na plochu):
-
-<code>${esc(APP_KEY)}</code>` });
-  }
 
   if (text.startsWith("/mapa")) {
     return tg("sendMessage", { chat_id: chatId, parse_mode: "HTML", text: `🗺️ <a href="${appLink()}">Otevřít mapu</a>` });

@@ -1,4 +1,4 @@
-// REST API pro mobilní aplikaci. Přístup chrání tajný klíč APP_KEY (hlavička x-app-key).
+// REST API pro mobilní aplikaci. Koncept bez přihlášení: kdo zná adresu, může mapu číst i upravovat.
 import { CATEGORIES, CATEGORY_IDS } from "../_shared/categories.ts";
 import { db, processInput } from "../_shared/pipeline.ts";
 
@@ -12,20 +12,8 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json; charset=utf-8" } });
 }
 
-function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
-
-  const appKey = Deno.env.get("APP_KEY") ?? "";
-  if (!appKey || !safeEqual(req.headers.get("x-app-key") ?? "", appKey)) {
-    return json({ error: "unauthorized" }, 401);
-  }
 
   // Cesta za názvem funkce: /api/places/<id> -> ["places", "<id>"]
   const parts = new URL(req.url).pathname.split("/").filter(Boolean);

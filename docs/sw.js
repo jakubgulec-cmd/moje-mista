@@ -1,7 +1,9 @@
 // Service worker: aplikace se otevře i bez signálu (s naposledy načtenými daty).
-const CACHE = "mm-v1";
+const CACHE = "mm-v2";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "config.js", "manifest.webmanifest", "icons/icon-192.png",
-  "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css", "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"];
+  "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css", "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
+  "https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css", "https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js",
+  "https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -16,7 +18,7 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET") return;
   // API a mapové dlaždice vždy ze sítě (data řeší aplikace sama).
-  if (url.pathname.includes("/functions/") || url.hostname.endsWith("tile.openstreetmap.org")) return;
+  if (url.pathname.includes("/functions/") || url.hostname.endsWith("openfreemap.org")) return;
   const isShell = url.origin === location.origin || url.hostname === "unpkg.com";
   if (!isShell) return;
   // Síť má přednost (ať se aktualizace projeví hned), cache je záloha pro offline.
