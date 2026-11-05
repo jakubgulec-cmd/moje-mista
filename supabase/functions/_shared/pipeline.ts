@@ -1,7 +1,7 @@
 // Celý tok: text (odkaz na reelsko nebo ruční popis) -> místa uložená v databázi.
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { extractPlaces } from "./ai.ts";
-import { geocode } from "./geo.ts";
+import { extractPlaces, failures, usedModel } from "./ai.ts";
+import { geocode, geoLog } from "./geo.ts";
 import { fetchImageBase64, fetchReel, findInstagramUrl, type ReelInfo } from "./instagram.ts";
 
 export const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
@@ -33,9 +33,28 @@ export interface ProcessResult {
   places: Place[];
   duplicates: Place[];
   reel: Pick<ReelInfo, "url" | "method" | "author" | "location"> & { hasCaption: boolean } | null;
+  debug?: string[];
+}
+
+// Jednoduché měření kroků (vrací se v odpovědi API kvůli ladění).
+export const trace: string[] = [];
+export async function timed<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  const t = Date.now();
+  try {
+    return await fn();
+  } finally {
+    trace.push(`${label}: ${Date.now() - t} ms`);
+  }
 }
 
 export async function processInput(raw: string): Promise<ProcessResult> {
+  trace.length = 0;
+  geoLog.length = 0;
+  const r = await processInner(raw);
+  return { ...r, debug: [...trace, `model: ${usedModel}`, `selhalo: ${failures.join(", ") || "-"}`, ...geoLog] };
+}
+
+async function processInner(raw: string): Promise<ProcessResult> {
   const text = raw.trim();
   const ig = findInstagramUrl(text);
   let reel: ReelInfo | null = null;
@@ -43,9 +62,10 @@ export async function processInput(raw: string): Promise<ProcessResult> {
   let image = null;
 
   if (ig) {
-    reel = await fetchReel(ig.url, ig.shortcode);
+    reel = await timed("instagram", () => fetchReel(ig.url, ig.shortcode));
+    trace.push(`instagram zdroje: ${reel.method.join(",") || "nic"}; popisek: ${reel.caption ? "ano" : "ne"}; poloha: ${reel.location ?? "-"}`);
     userText = text.replace(ig.url, "").trim() || null;
-    if (reel.thumbnailUrl) image = await fetchImageBase64(reel.thumbnailUrl);
+    if (reel.thumbnailUrl) image = await timed("náhled", () => fetchImageBase64(reel!.thumbnailUrl!));
   }
 
   const reelSummary = reel
@@ -55,13 +75,13 @@ export async function processInput(raw: string): Promise<ProcessResult> {
   const hasData = !!(userText || reel?.caption || reel?.location || image);
   if (!hasData) return { status: "no_data", places: [], duplicates: [], reel: reelSummary };
 
-  const found = await extractPlaces({
+  const found = await timed("ai", () => extractPlaces({
     caption: reel?.caption ?? null,
     location: reel?.location ?? null,
     author: reel?.author ?? null,
     userText,
     image,
-  });
+  }));
   if (found.length === 0) return { status: reel && !reel.caption && !userText ? "no_data" : "no_place", places: [], duplicates: [], reel: reelSummary };
 
   const sourceUrl = reel ? `https://www.instagram.com/reel/${reel.shortcode}/` : null;
@@ -74,7 +94,8 @@ export async function processInput(raw: string): Promise<ProcessResult> {
       duplicates.push(existing);
       continue;
     }
-    const geo = await geocode(p);
+    const geo = await timed(`geo ${p.name}`, () => geocode(p));
+    trace.push(`geo ${p.name}: ${geo.precision}`);
     const { data, error } = await db.from("places").insert({
       name: p.name.trim(),
       category: p.category,

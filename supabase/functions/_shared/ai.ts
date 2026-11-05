@@ -61,12 +61,15 @@ Pravidla:
 - search_query napiš tak, aby místo našla mapa OpenStreetMap: "název, čtvrť, město" (bez slov jako "best", "kavárna" navíc).
 - confidence: high = název i město jsou jisté, medium = drobná nejistota, low = spíš odhad.`;
 
-const FALLBACK_MODELS = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.5-flash", "gemini-flash-lite-latest"];
+export let usedModel = "";
+export const failures: string[] = [];
+// Pořadí podle měření na free tieru: lite modely odpovídají do ~2 s, velké bývají přetížené (503).
+const FALLBACK_MODELS = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-flash-lite-latest", "gemini-3.5-flash"];
 
 export async function extractPlaces(input: ExtractInput): Promise<ExtractedPlace[]> {
   const apiKey = Deno.env.get("GEMINI_API_KEY");
   if (!apiKey) throw new Error("Chybí GEMINI_API_KEY");
-  const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-flash-latest";
+  const model = Deno.env.get("GEMINI_MODEL") ?? FALLBACK_MODELS[0];
 
   const facts = [
     input.location && `Štítek polohy: ${input.location}`,
@@ -88,16 +91,28 @@ export async function extractPlaces(input: ExtractInput): Promise<ExtractedPlace
   const models = [...new Set([model, ...FALLBACK_MODELS])];
   let res: Response | null = null;
   let lastError = "";
+  failures.length = 0;
   for (const m of models) {
-    res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      body,
-      signal: AbortSignal.timeout(60000),
-    });
-    if (res.ok) break;
+    try {
+      res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+        body,
+        signal: AbortSignal.timeout(25000),
+      });
+    } catch (e) {
+      lastError = `Gemini ${m}: ${e instanceof Error ? e.message : e}`;
+      failures.push(`${m} timeout`);
+      res = null;
+      continue;
+    }
+    if (res.ok) {
+      usedModel = m;
+      break;
+    }
     lastError = `Gemini ${m} ${res.status}: ${(await res.text()).slice(0, 200)}`;
     console.warn(lastError);
+    failures.push(`${m} ${res.status}`);
     if (![404, 429, 500, 503].includes(res.status)) break;
     res = null;
   }
