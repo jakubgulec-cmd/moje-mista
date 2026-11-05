@@ -1,9 +1,10 @@
 {
+  "id": "/mapinstabot/app-v2",
   "name": "Moje místa",
   "short_name": "Místa",
   "description": "Společná mapa míst z cestovatelských Instagram reels.",
   "lang": "cs",
-  "start_url": "./",
+  "start_url": "./?source=pwa",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
