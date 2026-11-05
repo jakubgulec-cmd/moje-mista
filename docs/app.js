@@ -1,6 +1,6 @@
 /* global L, APP_CONFIG */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/+esm";
-import { initGlass } from "./glass.js?v=202611051352";
+import { initGlass } from "./glass.js?v=202611051502";
 
 const sb = createClient(APP_CONFIG.supabaseUrl, APP_CONFIG.supabaseKey, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
@@ -72,11 +72,6 @@ function toast(msg) {
   t.style.animation = "none"; void t.offsetWidth; t.style.animation = "";
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => (t.hidden = true), 2800);
-}
-
-// ---------- diagnostika (dočasně): co aplikace dostala ----------
-function clog(kind, detail) {
-  try { sb.from("client_log").insert({ kind, detail: typeof detail === "string" ? detail.slice(0, 2000) : JSON.stringify(detail).slice(0, 2000) }).then(() => {}); } catch { /* ignoruj */ }
 }
 
 // ---------- liquid glass: odlesk sleduje prst / kurzor ----------
@@ -509,7 +504,6 @@ function openAdd(prefill = "", autoSubmit = false) {
     }
     clearInterval(timer);
     submit.disabled = false;
-    clog("submit", { url, status: r.status, message: r.message });
     out.replaceChildren(resultView(r));
     if (r.status === "saved_new" || r.status === "saved_existing") {
       input.value = "";
@@ -648,7 +642,6 @@ let shareBusy = false;
 function handleShare() {
   const shared = sessionStorage.getItem(SHARE_KEY);
   if (!shared || shareBusy || !authReady) return;
-  clog("share", { shared, user: !!state.user, sheet: currentSheet });
   if (!state.user) {
     // Po přihlášení se sdílení dokončí samo (handleShare zavolá onAuthStateChange).
     if (currentSheet !== "account") openAccount("Přihlas se a reelsko se hned přidá do mapy.");
@@ -665,7 +658,6 @@ function boot() {
   const q = new URLSearchParams(location.search);
   const raw = [q.get("url"), q.get("text"), q.get("title")].filter(Boolean).join(" ").trim();
   const shared = extractReel(raw) ?? raw;
-  clog("launch", { href: location.href, referrer: document.referrer, standalone: matchMedia("(display-mode: standalone)").matches, ua: navigator.userAgent, raw, shared });
   if (location.search || location.hash) history.replaceState(null, "", location.pathname);
   ["mm.places", "mm.appKey"].forEach((k) => localStorage.removeItem(k));
 
