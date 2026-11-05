@@ -1,4 +1,6 @@
-# Moje místa (mapinstabot)
+# Moje místa
+
+Aplikace: https://jakubgulec-cmd.github.io/moje-mista/
 
 Společná mapa míst z cestovatelských Instagram reels. Kdokoli s účtem pošle odkaz na reelsko,
 AI přísně ověří, že jde o cestovatelský tip s konkrétním místem, a místo se objeví na mapě všem.
