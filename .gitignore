@@ -4,3 +4,7 @@ supabase/.temp/
 supabase/.branches/
 android-signing/
 docs/lens-test.html
+android/release.keystore
+android/.gradle/
+android/build/
+android/app/build/

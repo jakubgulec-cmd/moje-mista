@@ -1,0 +1,38 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "io.github.jakubgulec_cmd.mojemista"
+    compileSdk 35
+
+    defaultConfig {
+        // Stejné ID jako dřívější APK -> nainstaluje se jako aktualizace (stejný podpisový klíč).
+        applicationId "io.github.jakubgulec_cmd.mojemista"
+        minSdk 24
+        targetSdk 35
+        versionCode Integer.parseInt(System.getenv("VERSION_CODE") ?: "10")
+        versionName "2." + (System.getenv("VERSION_CODE") ?: "0")
+    }
+
+    signingConfigs {
+        release {
+            storeFile file("../release.keystore")
+            storePassword System.getenv("KEYSTORE_PASSWORD")
+            keyAlias System.getenv("KEY_ALIAS")
+            keyPassword System.getenv("KEY_PASSWORD")
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

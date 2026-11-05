@@ -1,6 +1,6 @@
 /* global L, APP_CONFIG */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/+esm";
-import { initGlass } from "./glass.js?v=202611051253";
+import { initGlass } from "./glass.js?v=202611051352";
 
 const sb = createClient(APP_CONFIG.supabaseUrl, APP_CONFIG.supabaseKey, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
@@ -281,6 +281,11 @@ function openSheet(name, title, ...content) {
   $("#sheet").hidden = false;
   $("#backdrop").hidden = false;
 }
+// Nativní aplikace: tlačítko Zpět nejdřív zavře otevřený panel.
+window.mmBack = () => {
+  if (!$("#sheet").hidden) { closeSheet(); return true; }
+  return false;
+};
 function closeSheet() {
   currentSheet = null;
   $("#sheet-body").querySelectorAll("video").forEach((v) => v.pause());
@@ -471,7 +476,7 @@ function openAdd(prefill = "", autoSubmit = false) {
   const input = h("input", { type: "text", inputmode: "url", placeholder: "https://www.instagram.com/reel/…", value: extractReel(prefill) ?? prefill, autocomplete: "off" });
   const pasteBtn = h("button", { class: "btn lg", type: "button", "aria-label": "Vložit ze schránky", onclick: async () => {
     try {
-      const t = await navigator.clipboard.readText();
+      const t = window.MojeMistaApp?.readClipboard ? window.MojeMistaApp.readClipboard() : await navigator.clipboard.readText();
       if (t) { input.value = extractReel(t) ?? t.trim(); form.requestSubmit(); }
     } catch { toast("Schránka není dostupná – vlož odkaz ručně"); input.focus(); }
   } }, icon("paste"), "Vložit");
