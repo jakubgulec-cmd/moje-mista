@@ -1,6 +1,6 @@
 /* global L, APP_CONFIG */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/+esm";
-import { initGlass } from "./glass.js?v=202611051236";
+import { initGlass } from "./glass.js?v=202611051238";
 
 const sb = createClient(APP_CONFIG.supabaseUrl, APP_CONFIG.supabaseKey, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
@@ -456,7 +456,10 @@ function recommend(categoryId) {
 const STEPS = ["Kontroluji, jestli už reelsko v mapě není", "Stahuji reelsko", "AI ověřuje, že jde o cestovatelský tip", "Hledám místo na mapě", "Ukládám"];
 
 function openAdd(prefill = "", autoSubmit = false) {
-  if (!requireLogin("Přihlas se a přidávej reelska do společné mapy.")) { pendingShare = prefill || pendingShare; return; }
+  if (!requireLogin("Přihlas se a přidávej reelska do společné mapy.")) {
+    if (prefill) sessionStorage.setItem(SHARE_KEY, prefill);
+    return;
+  }
   const input = h("input", { type: "url", inputmode: "url", placeholder: "https://www.instagram.com/reel/…", value: prefill, autocomplete: "off" });
   const pasteBtn = h("button", { class: "btn lg", type: "button", "aria-label": "Vložit ze schránky", onclick: async () => {
     try {
@@ -570,7 +573,7 @@ function openAccount(reason) {
         : error.message;
       return;
     }
-    closeSheet();
+    if (currentSheet === "account") closeSheet(); // panel se sdíleným reelskem nezavírat
     toast(mode === "signup" ? "Vítej v komunitě! 🎉" : "Jsi přihlášený");
   } }, seg, reason ? h("p", { class: "muted" }, reason) : null, email, pass, nick, err, submit);
   openSheet("account", "Účet", form,
@@ -604,7 +607,6 @@ async function openProfile() {
 }
 
 // ---------- start ----------
-let pendingShare = "";
 $("#btn-locate").addEventListener("click", () => startLocate(true));
 $("#btn-list").addEventListener("click", openList);
 $("#btn-recommend").addEventListener("click", openRecommend);
@@ -617,10 +619,29 @@ $("#backdrop").addEventListener("click", closeSheet);
 sb.auth.onAuthStateChange((_event, session) => {
   const was = state.user?.id;
   state.user = session?.user ?? null;
-  if (was !== state.user?.id || !state.nickname) loadMine().then(() => {
-    if (state.user && pendingShare) { const s = pendingShare; pendingShare = ""; openAdd(s, true); }
-  });
+  authReady = true;
+  if (was !== state.user?.id || !state.nickname) loadMine();
+  handleShare();
 });
+
+// ---------- sdílení z Instagramu ----------
+// Odkaz se uloží do sessionStorage, aby přežil i případné znovunačtení stránky.
+const SHARE_KEY = "mm.share";
+let authReady = false;
+let shareBusy = false;
+function handleShare() {
+  const shared = sessionStorage.getItem(SHARE_KEY);
+  if (!shared || shareBusy || !authReady) return;
+  if (!state.user) {
+    // Po přihlášení se sdílení dokončí samo (handleShare zavolá onAuthStateChange).
+    if (currentSheet !== "account") openAccount("Přihlas se a reelsko se hned přidá do mapy.");
+    return;
+  }
+  shareBusy = true;
+  sessionStorage.removeItem(SHARE_KEY);
+  openAdd(shared, true);
+  shareBusy = false;
+}
 
 function boot() {
   // Sdílení z jiné aplikace (Android: Web Share Target)
@@ -633,14 +654,10 @@ function boot() {
   if (cached) { try { Object.assign(state, JSON.parse(cached)); render(); } catch { /* ignoruj */ } }
   loadPlaces();
   if (shared) {
-    pendingShare = shared;
-    sb.auth.getSession().then(({ data }) => {
-      if (!data.session) return openAdd(shared);
-      state.user = data.session.user;
-      pendingShare = "";
-      openAdd(shared, true);
-    });
+    sessionStorage.setItem(SHARE_KEY, shared);
+    toast("Reelsko přijato ✓");
   }
+  handleShare();
   navigator.permissions?.query({ name: "geolocation" }).then((s) => { if (s.state === "granted") startLocate(false); }).catch(() => {});
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden) loadPlaces(); });

@@ -1,6 +1,6 @@
 // Service worker: aplikace se otevře i bez signálu. Vlastní soubory se vždy ověřují na serveru,
 // aby se nikdy nesmíchala stará a nová verze.
-const CACHE = "mm-202611051236";
+const CACHE = "mm-202611051238";
 const SHELL = ["./", "index.html", "manifest.webmanifest", "icons/icon-192.png"];
 
 self.addEventListener("install", (e) => {
@@ -11,8 +11,7 @@ self.addEventListener("activate", (e) => {
   e.waitUntil((async () => {
     for (const k of await caches.keys()) if (k !== CACHE) await caches.delete(k);
     await self.clients.claim();
-    // Otevřené stránky se starou verzí rovnou načti znovu.
-    for (const client of await self.clients.matchAll({ type: "window" })) client.navigate(client.url).catch(() => {});
+    // Stránky se znovu nenačítají: zahodilo by to sdílený odkaz. Míchání verzí brání verzované soubory.
   })());
 });
 
