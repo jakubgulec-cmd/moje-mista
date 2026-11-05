@@ -82,10 +82,19 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 }
 .lg:active { transform: scale(1.06); }
 .lg:active::before { opacity: 1; }
-/* Chromium: skutečný lom pozadí přes SVG filtr */
-.refract .lg:not(.tint):not(.on) {
-  backdrop-filter: url(#lg-refract) blur(3px) saturate(190%) brightness(1.08);
+/* Chromium: čiré sklo s lomem (filtr nastavuje glass.js podle tvaru prvku) */
+.lens-on .lens { --lg-tint: rgba(255, 255, 255, .12); }
+.lens-on .lens::before {
+  background:
+    radial-gradient(90px circle at var(--lx, 28%) var(--ly, -10%), rgba(255, 255, 255, .55), rgba(255, 255, 255, 0) 60%),
+    linear-gradient(180deg, rgba(255, 255, 255, .22), rgba(255, 255, 255, 0) 40%);
 }
+.lens-on .lens:not(.dock):not(.author):not(.play) { text-shadow: 0 0 8px rgba(255, 255, 255, .9), 0 0 2px rgba(255, 255, 255, .9); }
+.lens-on .dock.lens { --lg-tint: rgba(255, 255, 255, .2); }
+.lens-on .dock-btn.active.lens { --lg-tint: rgba(255, 255, 255, .16); background: var(--lg-tint); box-shadow: var(--lg-rim), 0 4px 12px -6px rgba(10,14,40,.3); }
+.lens.pressed { transform: scale(1.08); }
+.dock.lens.pressed, .toast.lens.pressed { transform: translateX(-50%) scale(1.01); }
+.reel .lens { --lg-tint: rgba(255, 255, 255, .08); }
 /* Tónované sklo (hlavní akce) */
 .lg.tint {
   color: #fff;
@@ -100,7 +109,6 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .lg.tint::before { background: radial-gradient(120px circle at var(--lx, 30%) var(--ly, -10%), rgba(255, 255, 255, .55), rgba(255, 255, 255, 0) 60%); }
 @media (prefers-reduced-transparency: reduce) {
   .lg { background: rgba(250, 251, 253, .97); -webkit-backdrop-filter: none; backdrop-filter: none; }
-  .refract .lg:not(.tint) { backdrop-filter: none; }
 }
 
 /* ---------------------------------------------------------------------

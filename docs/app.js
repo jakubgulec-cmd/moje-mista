@@ -1,5 +1,6 @@
 /* global L, APP_CONFIG */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/+esm";
+import { initGlass } from "./glass.js?v=202611051236";
 
 const sb = createClient(APP_CONFIG.supabaseUrl, APP_CONFIG.supabaseKey, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
@@ -74,8 +75,6 @@ function toast(msg) {
 }
 
 // ---------- liquid glass: odlesk sleduje prst / kurzor ----------
-const isChromium = !!navigator.userAgentData?.brands?.some((b) => /Chromium/i.test(b.brand));
-if (isChromium && !matchMedia("(prefers-reduced-transparency: reduce)").matches) document.documentElement.classList.add("refract");
 function moveLight(e) {
   const el = e.target.closest?.(".lg");
   if (!el) return;
@@ -171,6 +170,7 @@ function renderHeader() {
     : `${plural(total, "místo", "místa", "míst")} od komunity`;
   const rb = $("#btn-radius");
   rb.classList.toggle("tint", !!state.radiusKm);
+  rb.classList.toggle("lens", !state.radiusKm);
   rb.classList.toggle("on", !!state.radiusKm);
   $("#radius-label").textContent = state.radiusKm ? `Do ${state.radiusKm} km` : "Všude";
 }
@@ -181,12 +181,12 @@ function renderChips() {
   if (!state.places.length) return;
   const counts = {};
   for (const p of state.places) counts[p.category] = (counts[p.category] ?? 0) + 1;
-  box.append(h("button", { class: `chip lg all ${state.filter.size ? "" : "on"}`, onclick: () => { state.filter.clear(); render(); } },
+  box.append(h("button", { class: `chip lg all ${state.filter.size ? "lens" : "on"}`, onclick: () => { state.filter.clear(); render(); } },
     "Vše", h("span", { class: "count" }, state.places.length)));
   for (const c of state.categories) {
     if (!counts[c.id]) continue;
     box.append(h("button", {
-      class: `chip lg ${state.filter.has(c.id) ? "on" : ""}`, style: `--c:${c.color}`,
+      class: `chip lg ${state.filter.has(c.id) ? "on" : "lens"}`, style: `--c:${c.color}`,
       onclick: () => { state.filter.has(c.id) ? state.filter.delete(c.id) : state.filter.add(c.id); render(); },
     }, `${c.emoji} ${c.label}`, h("span", { class: "count" }, counts[c.id])));
   }
@@ -194,7 +194,7 @@ function renderChips() {
     const next = { all: "todo", todo: "done", done: "all" };
     const label = { all: "Navštívené i nenavštívené", todo: "Kde jsem nebyl", done: "Kde jsem byl" };
     box.append(h("button", {
-      class: `chip lg ${state.visitFilter !== "all" ? "on" : ""}`, style: "--c:#16a34a",
+      class: `chip lg ${state.visitFilter !== "all" ? "on" : "lens"}`, style: "--c:#16a34a",
       onclick: () => { state.visitFilter = next[state.visitFilter]; render(); },
     }, state.visitFilter === "done" ? "✓ " : "", label[state.visitFilter]));
   }
@@ -239,7 +239,7 @@ function startLocate(center = true) {
     return;
   }
   let first = center;
-  $("#btn-locate").classList.add("active");
+  $("#btn-locate").classList.add("active", "lens");
   watchId = navigator.geolocation.watchPosition((pos) => {
     const firstFix = !state.me;
     state.me = { lat: pos.coords.latitude, lng: pos.coords.longitude };
@@ -258,7 +258,8 @@ function startLocate(center = true) {
       onFirstFix = null;
     }
   }, (err) => {
-    $("#btn-locate").classList.remove("active");
+    $("#btn-locate").classList.remove("active", "lens");
+    $("#btn-locate").style.backdropFilter = "";
     navigator.geolocation.clearWatch(watchId);
     watchId = null;
     toast(err.code === 1 ? "Přístup k poloze je zakázaný – povol ho v nastavení prohlížeče" : "Polohu se nepodařilo zjistit");
@@ -296,7 +297,7 @@ function reelView(p) {
     playsinline: true, muted: true, loop: true, preload: "metadata",
   });
   video.muted = true;
-  const play = h("button", { class: "play lg", "aria-label": "Přehrát", html: ICON.play });
+  const play = h("button", { class: "play lg lens", "aria-label": "Přehrát", html: ICON.play });
   const toggle = () => {
     if (video.paused) { video.play().catch(() => window.open(p.reel_url, "_blank")); play.hidden = true; }
     else { video.pause(); play.hidden = false; }
@@ -305,7 +306,7 @@ function reelView(p) {
   play.addEventListener("click", toggle);
   video.addEventListener("error", () => { video.remove(); play.remove(); box.style.background = "var(--grad)"; }, { once: true });
   box.append(video, play,
-    h("a", { class: "author lg", href: p.reel_url, target: "_blank", rel: "noopener" },
+    h("a", { class: "author lg lens", href: p.reel_url, target: "_blank", rel: "noopener" },
       h("span", { class: "ig", html: ICON.ig }),
       h("span", {}, p.ig_author ? `@${p.ig_author}` : "Instagram", h("small", {}, "Otevřít reelsko na Instagramu"))));
   return box;
@@ -643,5 +644,6 @@ function boot() {
   navigator.permissions?.query({ name: "geolocation" }).then((s) => { if (s.state === "granted") startLocate(false); }).catch(() => {});
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden) loadPlaces(); });
+initGlass();
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then((r) => r.update()).catch(() => {});
 boot();

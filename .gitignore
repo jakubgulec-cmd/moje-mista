@@ -2,3 +2,5 @@
 .claude/
 supabase/.temp/
 supabase/.branches/
+android-signing/
+docs/lens-test.html
