@@ -1,7 +1,7 @@
 /* global L, APP_CONFIG */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/+esm";
-import { routeLeg } from "./routing.js?v=202611051539";
-import { initGlass } from "./glass.js?v=202611051539";
+import { routeLeg } from "./routing.js?v=202611051557";
+import { initGlass } from "./glass.js?v=202611051557";
 
 const sb = createClient(APP_CONFIG.supabaseUrl, APP_CONFIG.supabaseKey, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
@@ -534,16 +534,34 @@ function openPlace(p) {
           h("span", {},
             `${p.contributor ? `Přidal(a) ${p.contributor}` : "Přidáno komunitou"} · ${fmtDate(p.reel_created_at)}`,
             h("br"),
-            locked ? `Další reelsko od ${fmtDate(p.next_slot_at)}` : "Místo je volné – přidej své reelsko")))),
+            locked ? `Nahradit jiným reelskem jde od ${fmtDate(p.next_slot_at)}` : "Reelsko jde nahradit tvým")))),
     h("div", { class: "btn-grid" },
       h("a", { class: "btn lg tint", href: navUrl(p), target: "_blank", rel: "noopener" }, icon("nav"), "Navigovat"),
       h("button", { class: `btn ${isSaved(p) ? "on-star" : "lg"}`, onclick: () => toggleSaved(p) }, icon(isSaved(p) ? "starFill" : "star"), isSaved(p) ? "V mé mapě" : "Uložit do mé mapy"),
       visitBtn,
       h("button", { class: "btn lg", onclick: () => addToTripPicker(p) }, icon("route"), "Přidat do cesty")),
+    olderReels(p),
     h("div", { style: "text-align:center;margin-top:6px" },
       h("button", { class: "btn btn-text", onclick: () => report(p) }, icon("flag"), "Nahlásit nevhodné reelsko")),
   );
   keepVisible(p);
+}
+
+/** Dřívější reelska místa: zůstávají natrvalo, i když je později nahradilo novější. */
+function olderReels(p) {
+  if (!(p.reel_count > 1)) return null;
+  const box = h("div", { class: "older" }, h("div", { class: "section-label" }, `Dřívější reelska (${p.reel_count - 1})`));
+  sb.from("reels").select("id, url, ig_author, created_at, profiles(nickname)").eq("place_id", p.id).neq("id", p.reel_id)
+    .order("created_at", { ascending: false }).limit(20)
+    .then(({ data }) => {
+      if (!data?.length) { box.remove(); return; }
+      box.append(h("ul", { class: "list" }, data.map((r) => h("li", { class: "item" },
+        h("span", { class: "ig-dot", html: ICON.ig }),
+        h("a", { class: "txt", href: r.url, target: "_blank", rel: "noopener", style: "text-decoration:none;color:inherit" },
+          h("div", { class: "name" }, r.ig_author ? `@${r.ig_author}` : "Instagram"),
+          h("div", { class: "sub" }, `${r.profiles?.nickname ? `Přidal(a) ${r.profiles.nickname}` : "Přidáno komunitou"} · ${fmtDate(r.created_at)}`))))));
+    });
+  return box;
 }
 
 async function report(p) {
@@ -1075,7 +1093,7 @@ function openAdd(prefill = "", autoSubmit = false) {
   h("ul", { class: "rules card" },
     h("li", {}, h("span", { class: "ico" }, "✈️"), h("span", {}, h("b", {}, "Jen cestovatelská reelska "), "s jedním konkrétním místem, které je ve videu vidět.")),
     h("li", {}, h("span", { class: "ico" }, "🛡️"), h("span", {}, h("b", {}, "AI kontroluje každé video. "), "Nevhodný obsah, reklamy a reelska bez místa neprojdou.")),
-    h("li", {}, h("span", { class: "ico" }, "🔒"), h("span", {}, h("b", {}, "Jedno reelsko na místo na 7 dní. "), "Kdo je první, toho reelsko u místa svítí.")),
+    h("li", {}, h("span", { class: "ico" }, "🔒"), h("span", {}, h("b", {}, "Reelska zůstávají natrvalo. "), "Po přidání ho u místa 7 dní nikdo nenahradí – kdo je první, toho reelsko svítí. Starší reelska zůstanou v historii místa.")),
     h("li", {}, h("span", { class: "ico" }, "📲"), h("span", {}, h("b", {}, "Jak sdílet: "), "v Instagramu dej Sdílet → Kopírovat odkaz a tady Vložit. Na Androidu můžeš sdílet rovnou do aplikace."))));
   openSheet("add", "Přidat reelsko", form);
   form.noValidate = true;
@@ -1087,7 +1105,7 @@ function resultView(r) {
     saved_new: ["ok", "🎉", "Hotovo, místo je na mapě"],
     saved_existing: ["ok", "✨", "Tvoje reelsko je u místa"],
     duplicate_reel: ["info", "🔁", "Tohle reelsko už v mapě je"],
-    place_locked: ["info", "🔒", "Místo je zatím obsazené"],
+    place_locked: ["info", "🔒", "Místo už má reelsko"],
     rejected: ["bad", "🛡️", "Reelsko neprošlo kontrolou"],
     no_data: ["bad", "📭", "Reelsko se nepodařilo stáhnout"],
     invalid: ["bad", "🔗", "Neplatný odkaz"],

@@ -126,7 +126,7 @@ async function run(userId: string | null, input: string, dryRun: boolean, debug:
       if (until > new Date()) {
         return {
           shortcode: ig.shortcode,
-          result: { status: "place_locked", message: `${same.name} už v mapě má reelsko. Nové sem jde přidat od ${fmtDate(until.toISOString())}.`, place_id: same.id, place_name: same.name, until: until.toISOString() },
+          result: { status: "place_locked", message: `${same.name} už v mapě má reelsko. Nahradit ho tvým jde nejdřív od ${fmtDate(until.toISOString())}.`, place_id: same.id, place_name: same.name, until: until.toISOString() },
         };
       }
     }
@@ -177,7 +177,7 @@ async function run(userId: string | null, input: string, dryRun: boolean, debug:
     shortcode: ig.shortcode,
     result: {
       status,
-      message: status === "saved_new" ? `${p.name} je nově na mapě. Díky!` : `${p.name} má teď tvoje reelsko. Díky!`,
+      message: status === "saved_new" ? `${p.name} je nově na mapě. Díky!` : `${p.name} teď ukazuje tvoje reelsko. To předchozí zůstává v historii místa. Díky!`,
       place_id: placeId,
       place_name: p.name,
     },

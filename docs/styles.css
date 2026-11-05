@@ -505,3 +505,8 @@ body.mine #map::before { content: ""; position: absolute; inset: 0; z-index: 399
 .onb-ico { width: 40px; height: 40px; flex: none; border-radius: 14px; display: grid; place-items: center; font-size: 21px; background: var(--grad-soft); }
 .onb-step b { display: block; font-size: 15px; margin-bottom: 2px; }
 .onb-step small { display: block; font-size: 13px; line-height: 1.45; color: var(--fg-2); }
+
+/* Dřívější reelska */
+.older .item { padding: 8px 10px; }
+.ig-dot { width: 32px; height: 32px; flex: none; border-radius: 50%; display: grid; place-items: center; color: #fff; background: linear-gradient(45deg, #feda75, #fa7e1e, #d62976, #962fbf, #4f5bd5); }
+.ig-dot svg { width: 16px; height: 16px; }

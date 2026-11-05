@@ -1,6 +1,6 @@
 // Service worker: aplikace se otevře i bez signálu. Vlastní soubory se vždy ověřují na serveru,
 // aby se nikdy nesmíchala stará a nová verze.
-const CACHE = "mm-202611051539";
+const CACHE = "mm-202611051557";
 const SHELL = ["./", "index.html", "manifest.webmanifest", "icons/icon-192.png"];
 
 self.addEventListener("install", (e) => {
