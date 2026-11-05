@@ -73,10 +73,45 @@ async function get(url: string): Promise<string | null> {
   }
 }
 
+// InstaFix (open-source proxy pro náhledy odkazů v Discordu/Telegramu) vrací popisek a náhled
+// v meta tazích. Instagram sám nepřihlášeným požadavkům popisky nevydá.
+const INSTAFIX_HOSTS = ["https://uuinstagram.com"];
+const BOT_UA = "Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)";
+
+async function fromInstaFix(shortcode: string, info: ReelInfo): Promise<void> {
+  for (const host of INSTAFIX_HOSTS) {
+    try {
+      const res = await fetch(`${host}/p/${shortcode}/`, {
+        headers: { "User-Agent": BOT_UA },
+        redirect: "manual",
+        signal: AbortSignal.timeout(12000),
+      });
+      if (!res.ok) continue;
+      const html = await res.text();
+      const caption = meta(html, "og:description");
+      const author = meta(html, "twitter:title");
+      const image = meta(html, "og:image");
+      if (caption && !info.caption) info.caption = caption.trim();
+      if (author && !info.author) info.author = author.replace(/^@/, "").trim();
+      if (image && !info.thumbnailUrl) info.thumbnailUrl = new URL(image, host).toString();
+      if (caption || image) {
+        info.method.push("instafix");
+        return;
+      }
+    } catch {
+      // další zdroj
+    }
+  }
+}
+
 export async function fetchReel(url: string, shortcode: string): Promise<ReelInfo> {
   const info: ReelInfo = { url, shortcode, caption: null, author: null, location: null, thumbnailUrl: null, method: [] };
 
-  // 1) Embed stránka s popiskem – obvykle funguje bez přihlášení.
+  // 0) InstaFix – v současnosti jediný spolehlivý zdroj popisku bez přihlášení.
+  await fromInstaFix(shortcode, info);
+  if (info.caption && info.thumbnailUrl) return info;
+
+  // 1) Embed stránka s popiskem (Instagram ji občas pustí i bez přihlášení).
   const embed = await get(`https://www.instagram.com/p/${shortcode}/embed/captioned/`);
   if (embed) {
     const cap = embed.match(/class="Caption"[^>]*>([\s\S]*?)<div class="CaptionComments"/);
