@@ -1,0 +1,4 @@
+.env
+.claude/
+supabase/.temp/
+supabase/.branches/
