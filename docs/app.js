@@ -643,5 +643,5 @@ function boot() {
   navigator.permissions?.query({ name: "geolocation" }).then((s) => { if (s.state === "granted") startLocate(false); }).catch(() => {});
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden) loadPlaces(); });
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then((r) => r.update()).catch(() => {});
 boot();

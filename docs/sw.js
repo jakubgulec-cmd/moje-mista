@@ -1,27 +1,32 @@
-// Service worker: aplikace se otevře i bez signálu (data mapy si drží sama aplikace).
-const CACHE = "mm-v4";
-const SHELL = ["./", "index.html", "styles.css", "app.js", "config.js", "manifest.webmanifest", "icons/icon-192.png",
-  "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css", "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
-  "https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js",
-  "https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css", "https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js",
-  "https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"];
+// Service worker: aplikace se otevře i bez signálu. Vlastní soubory se vždy ověřují na serveru,
+// aby se nikdy nesmíchala stará a nová verze.
+const CACHE = "mm-202611051214";
+const SHELL = ["./", "index.html", "manifest.webmanifest", "icons/icon-192.png"];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting()));
 });
+
 self.addEventListener("activate", (e) => {
-  e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
-    .then(() => self.clients.claim()));
+  e.waitUntil((async () => {
+    for (const k of await caches.keys()) if (k !== CACHE) await caches.delete(k);
+    await self.clients.claim();
+    // Otevřené stránky se starou verzí rovnou načti znovu.
+    for (const client of await self.clients.matchAll({ type: "window" })) client.navigate(client.url).catch(() => {});
+  })());
 });
+
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET") return;
-  // Data, mapové dlaždice a videa vždy ze sítě.
   if (/supabase\.co$|openfreemap\.org$|uuinstagram\.com$|cdninstagram\.com$/.test(url.hostname)) return;
-  const isShell = url.origin === location.origin || url.hostname === "unpkg.com" || url.hostname === "cdn.jsdelivr.net";
-  if (!isShell) return;
+  const own = url.origin === location.origin;
+  const cdn = url.hostname === "unpkg.com" || url.hostname === "cdn.jsdelivr.net";
+  if (!own && !cdn) return;
+  // Vlastní soubory: vždy se zeptat serveru (no-cache), cache jen jako záloha offline.
+  const req = own ? new Request(e.request.url, { cache: "no-cache", credentials: "same-origin" }) : e.request;
   e.respondWith(
-    fetch(e.request).then((res) => {
+    fetch(req).then((res) => {
       if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(e.request, copy)); }
       return res;
     }).catch(() => caches.match(e.request, { ignoreSearch: true }).then((r) => r || caches.match("./")))
