@@ -129,10 +129,10 @@ function pinIcon(p) {
   const cls = ["pin", p.geo_precision === "approx" && "approx", p.visited && "visited"].filter(Boolean).join(" ");
   return L.divIcon({
     className: "",
-    html: `<div class="${cls}" style="--c:${c.color}"><span>${c.emoji}</span></div>`,
-    iconSize: [40, 40],
-    iconAnchor: [20, 44],
-    popupAnchor: [0, -42],
+    html: `<div class="pin-wrap"><div class="${cls}" style="--c:${c.color}"><span>${c.emoji}</span></div></div>`,
+    iconSize: [44, 50],
+    iconAnchor: [22, 47],
+    popupAnchor: [0, -44],
   });
 }
 
@@ -189,7 +189,7 @@ function renderMarkers() {
     }
     const wasOpen = m.isPopupOpen();
     m.setLatLng([p.lat, p.lng]).setIcon(pinIcon(p));
-    m.unbindPopup().bindPopup(() => popupContent(p), { maxWidth: 300, minWidth: 270, autoPanPaddingTopLeft: [16, 150], autoPanPaddingBottomRight: [16, 110] });
+    m.unbindPopup().bindPopup(() => popupContent(p), { maxWidth: 300, minWidth: 270, autoPanPaddingTopLeft: [16, 165], autoPanPaddingBottomRight: [16, 120] });
     if (wasOpen) m.openPopup();
   }
   if (!fittedOnce && visible.size) {
@@ -299,8 +299,10 @@ function focusPlace(p) {
   if (state.filter.size && !state.filter.has(p.category)) state.filter.clear();
   if (state.hideVisited && p.visited) state.hideVisited = false;
   render();
+  const open = () => state.markers.get(p.id)?.openPopup();
+  if (map.getZoom() === 16 && map.getCenter().distanceTo([p.lat, p.lng]) < 5) return open();
+  map.once("moveend", open);
   map.flyTo([p.lat, p.lng], 16, { duration: 0.8 });
-  setTimeout(() => state.markers.get(p.id)?.openPopup(), 850);
 }
 
 function placeItem(p, subOverride) {
