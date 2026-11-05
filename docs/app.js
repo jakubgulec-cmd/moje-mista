@@ -1,7 +1,7 @@
 /* global L, APP_CONFIG */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/+esm";
-import { routeLeg } from "./routing.js?v=202611051531";
-import { initGlass } from "./glass.js?v=202611051531";
+import { routeLeg } from "./routing.js?v=202611051539";
+import { initGlass } from "./glass.js?v=202611051539";
 
 const sb = createClient(APP_CONFIG.supabaseUrl, APP_CONFIG.supabaseKey, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
@@ -21,7 +21,7 @@ const state = {
   mine: false,             // zobrazit jen Moji mapu
   activeTrip: null,        // id cesty zobrazené na mapě
   filter: new Set(),       // prázdné = všechny kategorie
-  visitFilter: "all",      // all | todo | done
+  hideVisited: false,      // skrýt navštívená místa
   radiusKm: null,          // null = všude
   me: null,
   loaded: false,
@@ -192,8 +192,7 @@ function visiblePlaces() {
   return state.places.filter((p) => {
     if (state.mine && !isSaved(p)) return false;
     if (state.filter.size && !state.filter.has(p.category)) return false;
-    if (state.visitFilter === "todo" && visited(p)) return false;
-    if (state.visitFilter === "done" && !visited(p)) return false;
+    if (state.hideVisited && visited(p)) return false;
     if (state.radiusKm && state.me && distanceKm(state.me, p) > state.radiusKm) return false;
     return true;
   });
@@ -226,7 +225,7 @@ function renderHeader() {
   rb.classList.toggle("tint", !!state.radiusKm);
   rb.classList.toggle("lens", !state.radiusKm);
   rb.classList.toggle("on", !!state.radiusKm);
-  $("#radius-label").textContent = state.radiusKm ? `Do ${state.radiusKm} km` : "Všude";
+  $("#radius-label").textContent = state.radiusKm ? `Do ${state.radiusKm} km` : "Okolí";
 }
 
 let styleShown = "community";
@@ -282,13 +281,11 @@ function renderChips() {
       onclick: () => { state.filter.has(c.id) ? state.filter.delete(c.id) : state.filter.add(c.id); render(); },
     }, `${c.emoji} ${c.label}`, h("span", { class: "count" }, counts[c.id])));
   }
-  if (state.user) {
-    const next = { all: "todo", todo: "done", done: "all" };
-    const label = { all: "Navštívené i nenavštívené", todo: "Kde jsem nebyl", done: "Kde jsem byl" };
+  if (state.user && state.visits.size) {
     box.append(h("button", {
-      class: `chip lg ${state.visitFilter !== "all" ? "on" : "lens"}`, style: "--c:#16a34a",
-      onclick: () => { state.visitFilter = next[state.visitFilter]; render(); },
-    }, state.visitFilter === "done" ? "✓ " : "", label[state.visitFilter]));
+      class: `chip lg ${state.hideVisited ? "on" : "lens"}`, style: "--c:#16a34a",
+      onclick: () => { state.hideVisited = !state.hideVisited; render(); },
+    }, icon("check"), state.hideVisited ? "Navštívená skrytá" : "Skrýt navštívená"));
   }
 }
 
@@ -361,8 +358,14 @@ function startLocate(center = true) {
 
 // ---------- spodní panel ----------
 let currentSheet = null;
+// Šipka Zpět: nextBack nastaví volající těsně před otevřením panelu (např. detail místa ze seznamu).
+let sheetBack = null;
+let nextBack = null;
 function openSheet(name, title, ...content) {
   currentSheet = name;
+  sheetBack = nextBack;
+  nextBack = null;
+  $("#sheet-back").hidden = !sheetBack;
   $("#sheet-title").textContent = title;
   $("#sheet-body").replaceChildren(...content.flat().filter((c) => c != null && c !== false));
   $("#sheet-body").scrollTop = 0;
@@ -427,11 +430,13 @@ function keepVisible(p) {
 }
 // Nativní aplikace: tlačítko Zpět nejdřív zavře otevřený panel.
 window.mmBack = () => {
-  if (!$("#sheet").hidden) { closeSheet(); return true; }
-  return false;
+  if ($("#sheet").hidden) return false;
+  if (sheetBack) { const b = sheetBack; b(); } else closeSheet();
+  return true;
 };
 function closeSheet() {
   currentSheet = null;
+  sheetBack = null;
   $("#sheet-body").querySelectorAll("video").forEach((v) => v.pause());
   $("#sheet").hidden = true;
   $("#backdrop").hidden = true;
@@ -442,6 +447,33 @@ function requireLogin(reason) {
   if (state.user) return true;
   openAccount(reason);
   return false;
+}
+
+// ---------- vlastní dialogy (místo systémových okének) ----------
+function askText({ title, label, value = "", ok = "Uložit", back }) {
+  return new Promise((resolve) => {
+    const input = h("input", { type: "text", value, maxlength: 80, "aria-label": label });
+    const done = (v) => { resolve(v); };
+    nextBack = () => { done(null); back?.(); };
+    openSheet("dialog", title,
+      h("form", { class: "stack", onsubmit: (e) => { e.preventDefault(); const v = input.value.trim(); if (v) done(v); } },
+        label ? h("p", { class: "muted" }, label) : null, input,
+        h("div", { class: "btn-grid" },
+          h("button", { class: "btn lg", type: "button", onclick: () => { done(null); back ? back() : closeSheet(); } }, "Zrušit"),
+          h("button", { class: "btn lg tint", type: "submit" }, ok))));
+    setTimeout(() => { input.focus(); input.select(); }, 250);
+  });
+}
+
+function askConfirm({ title, text, ok = "Ano", danger = false, back }) {
+  return new Promise((resolve) => {
+    nextBack = () => { resolve(false); back?.(); };
+    openSheet("dialog", title,
+      h("p", { class: "muted", style: "font-size:15px" }, text),
+      h("div", { class: "btn-grid" },
+        h("button", { class: "btn lg", onclick: () => { resolve(false); back ? back() : closeSheet(); } }, "Zrušit"),
+        h("button", { class: `btn ${danger ? "danger-solid" : "lg tint"}`, onclick: () => resolve(true) }, ok)));
+  });
 }
 
 // ---------- detail místa ----------
@@ -468,9 +500,9 @@ function openPlace(p) {
   const c = cat(p.category);
   const d = distTo(p);
   const locked = new Date(p.next_slot_at) > new Date();
-  const visitBtn = h("button", { class: `btn ${visited(p) ? "on" : "lg"}` }, icon("check"), visited(p) ? "Byl jsem tu" : "Byl jsem tu?");
+  const visitBtn = h("button", { class: `btn ${visited(p) ? "on" : "lg"}` }, icon("check"), visited(p) ? "Navštíveno" : "Označit navštívené");
   visitBtn.addEventListener("click", async () => {
-    if (!requireLogin("Přihlas se a odškrtávej místa, kde jsi byl.")) return;
+    if (!requireLogin("Přihlas se a odškrtávej navštívená místa.")) return;
     visitBtn.disabled = true;
     const was = visited(p);
     const { error } = was
@@ -481,7 +513,7 @@ function openPlace(p) {
     was ? state.visits.delete(p.id) : state.visits.add(p.id);
     render();
     openPlace(p);
-    toast(was ? "Odebráno z navštívených" : "Super, máš o místo víc ✓");
+    toast(was ? "Odebráno z navštívených" : "Navštíveno ✓");
   });
 
   openSheet("place", c.label,
@@ -516,27 +548,32 @@ function openPlace(p) {
 
 async function report(p) {
   if (!requireLogin("Pro nahlášení se přihlas.")) return;
-  if (!confirm(`Nahlásit reelsko u místa „${p.name}“ jako nevhodné?`)) return;
+  const yes = await askConfirm({ title: "Nahlásit reelsko", text: `Je reelsko u místa „${p.name}“ nevhodné? Po třech nahlášeních od různých lidí z mapy zmizí.`, ok: "Nahlásit", danger: true, back: () => openPlace(p) });
+  if (!yes) return;
   const { error } = await sb.from("reports").insert({ reel_id: p.reel_id, reason: "nevhodné" });
-  toast(error?.code === "23505" ? "Tohle už jsi nahlásil" : error ? "Nahlášení se nepovedlo" : "Díky, podíváme se na to. Po 3 nahlášeních reelsko zmizí.");
+  openPlace(p);
+  toast(error?.code === "23505" ? "Tohle už máš nahlášené" : error ? "Nahlášení se nepovedlo" : "Díky, nahlášení jsme přijali.");
 }
 
-function focusPlace(p) {
+function focusPlace(p, back = null) {
   closeSheet();
   if (state.filter.size && !state.filter.has(p.category)) state.filter.clear();
-  state.visitFilter = "all";
+  if (state.hideVisited && visited(p)) state.hideVisited = false;
   render();
   map.flyTo([p.lat, p.lng], 15, { duration: 0.8 });
-  map.once("moveend", () => openPlace(p));
+  let opened = false;
+  const go = () => { if (opened) return; opened = true; nextBack = back; openPlace(p); };
+  map.once("moveend", go);
+  setTimeout(go, 1100); // pojistka, kdyby animace mapy neskončila
 }
 
 // ---------- seznam ----------
-function placeItem(p, sub) {
+function placeItem(p, sub, back = null) {
   const c = cat(p.category);
   const d = distTo(p);
   return h("li", { class: `item ${visited(p) ? "visited" : ""}` },
     h("div", { class: "gloss sm", style: `--c:${c.color}` }, c.emoji),
-    h("button", { class: "txt", onclick: () => focusPlace(p) },
+    h("button", { class: "txt", onclick: () => focusPlace(p, back) },
       h("div", { class: "name" }, p.name),
       h("div", { class: "sub" }, sub ?? [c.label, p.city, p.country].filter(Boolean).join(" · "))),
     d != null ? h("span", { class: "pill" }, fmtDist(d)) : null,
@@ -566,7 +603,7 @@ function openList(tab = listTab) {
       h("button", { class: listSort === "new" ? "on" : "", onclick: () => { listSort = "new"; openList(); } }, "Nejnovější")),
     listSort === "near" && !state.me ? h("p", { class: "muted" }, "Zjišťuji polohu… Zatím řadím od nejnovějších.") : null,
     tab === "saved" && items.length ? h("button", { class: "btn lg btn-block", style: "margin-bottom:10px", onclick: () => setView(true) }, icon("map"), "Otevřít Moji mapu") : null,
-    items.length ? h("ul", { class: "list" }, items.map((p) => placeItem(p)))
+    items.length ? h("ul", { class: "list" }, items.map((p) => placeItem(p, undefined, () => openList(tab))))
       : h("div", { class: "empty-note" }, h("div", { class: "orb" }, tab === "saved" ? "⭐" : "🗺️"), empty,
         !state.user && tab === "saved" ? h("div", { style: "margin-top:12px" }, h("button", { class: "btn lg tint", onclick: () => openAccount() }, "Přihlásit se")) : null));
 }
@@ -667,18 +704,21 @@ function openTripsList(tabs) {
 
 async function createTrip(firstPlace) {
   if (!requireLogin("Přihlas se a plánuj si cesty.")) return null;
-  const name = prompt("Název cesty", firstPlace?.city ? `Výlet – ${firstPlace.city}` : "Moje cesta");
-  if (!name?.trim()) return null;
-  const { data, error } = await sb.from("trips").insert({ name: name.trim().slice(0, 80) }).select("id").single();
+  // Cesta se pojmenuje sama, přejmenovat jde kdykoli tužkou v detailu cesty.
+  const name = firstPlace?.city ? `Výlet – ${firstPlace.city}` : `Cesta ${new Date().toLocaleDateString("cs-CZ", { day: "numeric", month: "numeric" })}`;
+  const { data, error } = await sb.from("trips").insert({ name }).select("id").single();
   if (error) { toast("Cestu se nepodařilo vytvořit"); return null; }
   if (firstPlace) await sb.from("trip_stops").insert({ trip_id: data.id, place_id: firstPlace.id, position: 0 });
   await loadTrips();
+  render();
   openTrip(data.id);
+  toast("Cesta vytvořená – přidej do ní další místa");
   return data.id;
 }
 
 function addToTripPicker(p) {
   if (!requireLogin("Přihlas se a plánuj si cesty.")) return;
+  nextBack = () => openPlace(p);
   openSheet("trip-pick", "Přidat do cesty",
     h("p", { class: "muted" }, `Kam přidat „${p.name}“?`),
     h("button", { class: "btn lg tint btn-block", style: "margin-bottom:12px", onclick: () => createTrip(p) }, icon("plus"), "Nová cesta s tímto místem"),
@@ -759,16 +799,17 @@ async function removeStop(trip, stop) {
 }
 
 async function renameTrip(trip) {
-  const name = prompt("Nový název cesty", trip.name);
-  if (!name?.trim()) return;
-  await sb.from("trips").update({ name: name.trim().slice(0, 80) }).eq("id", trip.id);
+  const name = await askText({ title: "Přejmenovat cestu", value: trip.name, back: () => openTrip(trip.id) });
+  if (!name) return;
+  await sb.from("trips").update({ name: name.slice(0, 80) }).eq("id", trip.id);
   await loadTrips();
   render();
   openTrip(trip.id);
 }
 
 async function deleteTrip(trip) {
-  if (!confirm(`Smazat cestu „${trip.name}“?`)) return;
+  const yes = await askConfirm({ title: "Smazat cestu", text: `Opravdu smazat cestu „${trip.name}“? Místa v Mé mapě zůstanou.`, ok: "Smazat", danger: true, back: () => openTrip(trip.id) });
+  if (!yes) return;
   await sb.from("trips").delete().eq("id", trip.id);
   if (state.activeTrip === trip.id) state.activeTrip = null;
   await loadTrips();
@@ -825,7 +866,7 @@ function openTrip(id) {
     rows.push(h("li", { class: "item stop" },
       h("div", { class: "stop-num" }, i + 1),
       h("div", { class: "gloss sm", style: `--c:${c.color}` }, c.emoji),
-      h("button", { class: "txt", onclick: () => p && focusPlace(p) },
+      h("button", { class: "txt", onclick: () => p && focusPlace(p, () => openTrip(trip.id)) },
         h("div", { class: "name" }, p?.name ?? "Místo už není v mapě"),
         h("div", { class: "sub" }, [p?.city, p?.country].filter(Boolean).join(" · "))),
       h("div", { class: "stop-tools" },
@@ -941,11 +982,11 @@ function openRadius() {
 // ---------- tipy ----------
 function openRecommend() {
   if (!state.me && watchId == null) { onFirstFix = () => currentSheet === "tips" && openRecommend(); startLocate(false); }
-  const pool = state.places.filter((p) => !visited(p));
+  const pool = state.places.filter((p) => !visited(p) && (!state.mine || isSaved(p)));
   const counts = {};
   for (const p of pool) counts[p.category] = (counts[p.category] ?? 0) + 1;
-  openSheet("tips", "Kam dnes?",
-    h("p", { class: "muted" }, state.me ? "Vyber typ a doporučím nejbližší místo, kde jsi ještě nebyl." : "Zjišťuji polohu… Bez ní doporučím nejnovější místa."),
+  openSheet("tips", state.mine ? "Kam z mé mapy?" : "Kam dnes?",
+    h("p", { class: "muted" }, state.me ? "Vyber typ a doporučím nejbližší místo, které ještě nemáš navštívené." : "Zjišťuji polohu… Bez ní doporučím nejnovější místa."),
     h("div", { class: "grid" },
       h("button", { class: "tile any", disabled: !pool.length, onclick: () => recommend(null) },
         h("span", { class: "e" }, "🎲"), "Překvap mě", h("span", { class: "count" }, pool.length)),
@@ -955,7 +996,7 @@ function openRecommend() {
 }
 
 function recommend(categoryId) {
-  let pool = state.places.filter((p) => !visited(p) && (!categoryId || p.category === categoryId));
+  let pool = state.places.filter((p) => !visited(p) && (!state.mine || isSaved(p)) && (!categoryId || p.category === categoryId));
   pool.sort((a, b) => state.me ? distTo(a) - distTo(b) : new Date(b.reel_created_at) - new Date(a.reel_created_at));
   if (!categoryId && pool.length > 1) {
     const near = pool.slice(0, 8);
@@ -969,7 +1010,7 @@ function recommend(categoryId) {
   body.prepend(h("div", { class: "row", style: "margin-bottom:12px" },
     h("button", { class: "btn lg btn-sm", onclick: openRecommend }, icon("back"), "Typy"),
     h("button", { class: "btn lg btn-sm", onclick: () => recommend(categoryId) }, icon("dice"), "Jiný tip")));
-  if (rest.length) body.append(h("div", { class: "section-label" }, "Další v okolí"), h("ul", { class: "list" }, rest.slice(0, 4).map((p) => placeItem(p))));
+  if (rest.length) body.append(h("div", { class: "section-label" }, "Další v okolí"), h("ul", { class: "list" }, rest.slice(0, 4).map((p) => placeItem(p, undefined, () => recommend(categoryId)))));
   $("#sheet-title").textContent = categoryId ? `Tip: ${cat(categoryId).label}` : "Tip pro tebe";
   currentSheet = "tip";
 }
@@ -1101,7 +1142,7 @@ function openAccount(reason) {
       return;
     }
     if (currentSheet === "account") closeSheet(); // panel se sdíleným reelskem nezavírat
-    toast(mode === "signup" ? "Vítej v komunitě! 🎉" : "Jsi přihlášený");
+    toast(mode === "signup" ? "Vítej v komunitě! 🎉" : "Přihlášení proběhlo ✓");
   } }, seg, reason ? h("p", { class: "muted" }, reason) : null, email, pass, nick, err, submit);
   openSheet("account", "Účet", form,
     h("p", { class: "muted", style: "margin-top:14px;text-align:center" }, "Mapu si můžeš prohlížet i bez účtu. Účet potřebuješ na přidávání reelsek a odškrtávání míst."));
@@ -1129,13 +1170,13 @@ async function openProfile() {
             h("div", { class: "name" }, p?.name ?? `Reelsko ${s.shortcode ?? ""}`),
             h("div", { class: `sub ${ok(s) ? "ok" : "bad"}` }, `${fmtDate(s.created_at)} · ${s.reason}`)));
       }))
-      : h("p", { class: "muted" }, "Zatím jsi nic nepřidal. Tlačítkem ＋ přidáš první reelsko."),
+      : h("p", { class: "muted" }, "Zatím tu nic není. Tlačítkem ＋ přidáš první reelsko."),
     h("div", { style: "margin-top:16px" }, h("button", { class: "btn lg btn-block", onclick: async () => { await sb.auth.signOut(); closeSheet(); toast("Odhlášeno"); } }, "Odhlásit se")));
 }
 
 // ---------- start ----------
 $("#btn-locate").addEventListener("click", () => startLocate(true));
-$("#btn-list").addEventListener("click", openList);
+$("#btn-list").addEventListener("click", () => openList(state.mine ? (listTab === "trips" ? "trips" : "saved") : "places"));
 $("#btn-recommend").addEventListener("click", openRecommend);
 $("#btn-add").addEventListener("click", () => openAdd());
 $("#btn-account").addEventListener("click", () => openAccount());
@@ -1143,6 +1184,7 @@ $("#btn-radius").addEventListener("click", openRadius);
 $("#view-community").addEventListener("click", () => state.mine && setView(false));
 $("#view-mine").addEventListener("click", () => !state.mine && setView(true));
 $("#sheet-close").addEventListener("click", closeSheet);
+$("#sheet-back").addEventListener("click", () => window.mmBack());
 $("#backdrop").addEventListener("click", closeSheet);
 
 sb.auth.onAuthStateChange((_event, session) => {
@@ -1172,6 +1214,25 @@ function handleShare() {
   shareBusy = false;
 }
 
+// ---------- úvodní seznámení (jen poprvé) ----------
+function openOnboarding() {
+  const done = () => localStorage.setItem("mm.onboarded", "1");
+  const step = (emoji, title, text) => h("li", { class: "onb-step" },
+    h("span", { class: "onb-ico" }, emoji),
+    h("span", {}, h("b", {}, title), h("small", {}, text)));
+  openSheet("onboarding", "Vítej v Mých místech",
+    h("p", { class: "muted" }, "Společná mapa míst, která lidé objevili v cestovatelských reelsech na Instagramu."),
+    h("ul", { class: "onb-steps" },
+      step("📲", "Sdílej reelsko", "V Instagramu dej u reelska Sdílet → Moje místa, nebo zkopíruj odkaz a vlož ho tlačítkem ＋."),
+      step("🛡️", "AI ho zkontroluje", "Projdou jen cestovatelská reelska s konkrétním místem. Místo se objeví na mapě všem."),
+      step("⭐", "Ulož si, co tě láká", "Místa si ukládej do Mé mapy a odškrtávej ta navštívená."),
+      step("🧭", "Naplánuj cestu", "Z uložených míst poskládej výlet – pěšky, MHD, autem nebo na kole, s přesnou trasou.")),
+    h("div", { class: "btn-grid" },
+      h("button", { class: "btn lg", onclick: () => { done(); closeSheet(); } }, "Prohlédnout mapu"),
+      h("button", { class: "btn lg tint", onclick: () => { done(); openAdd(); } }, icon("plus"), "Přidat reelsko")));
+  $("#sheet-close").addEventListener("click", done, { once: true });
+}
+
 function boot() {
   // Sdílení z jiné aplikace (Android: Web Share Target)
   const q = new URLSearchParams(location.search);
@@ -1188,6 +1249,7 @@ function boot() {
     toast("Reelsko přijato ✓");
   }
   handleShare();
+  if (!shared && !localStorage.getItem("mm.onboarded")) setTimeout(() => { if ($("#sheet").hidden) openOnboarding(); }, 900);
   navigator.permissions?.query({ name: "geolocation" }).then((s) => { if (s.state === "granted") startLocate(false); }).catch(() => {});
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden) loadPlaces(); });
