@@ -1,6 +1,7 @@
 /* global L, APP_CONFIG */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/+esm";
-import { initGlass } from "./glass.js?v=202611051515";
+import { routeLeg } from "./routing.js?v=202611051531";
+import { initGlass } from "./glass.js?v=202611051531";
 
 const sb = createClient(APP_CONFIG.supabaseUrl, APP_CONFIG.supabaseKey, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
@@ -132,6 +133,7 @@ async function loadMine() {
     state.saved = new Set((sv.data ?? []).map((x) => x.place_id));
     state.nickname = p.data?.nickname ?? null;
   } else {
+    if (state.mine) setView(false);
     state.mine = false;
     state.activeTrip = null;
   }
@@ -157,8 +159,9 @@ function fitMinZoom() {
 }
 fitMinZoom();
 map.on("resize", fitMinZoom);
-L.maplibreGL({
-  style: "https://tiles.openfreemap.org/styles/liberty",
+const STYLE = { community: "https://tiles.openfreemap.org/styles/liberty", mine: "https://tiles.openfreemap.org/styles/positron" };
+const glLayer = L.maplibreGL({
+  style: STYLE.community,
   attribution: '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>',
 }).addTo(map);
 const cluster = L.markerClusterGroup({
@@ -208,12 +211,17 @@ function renderMarkers() {
 
 function renderHeader() {
   const total = state.places.length;
-  const shown = visiblePlaces().length;
-  $("#brand-sub").textContent = activeTrip() ? `Cesta · ${plural(activeTrip().stops.length, "zastávka", "zastávky", "zastávek")}`
-    : state.mine ? `Moje mapa · ${plural(shown, "místo", "místa", "míst")}`
-    : !state.loaded && !total ? "Načítám…"
-    : shown !== total ? `${plural(shown, "místo", "místa", "míst")} z ${total}`
-    : `${plural(total, "místo", "místa", "míst")} od komunity`;
+  const mine = state.mine;
+  document.body.classList.toggle("mine", mine);
+  const vs = $("#viewswitch");
+  vs.classList.toggle("is-mine", mine);
+  $("#view-community").classList.toggle("on", !mine);
+  $("#view-mine").classList.toggle("on", mine);
+  $("#view-community").setAttribute("aria-selected", String(!mine));
+  $("#view-mine").setAttribute("aria-selected", String(mine));
+  $("#cnt-community").textContent = !state.loaded && !total ? "Načítám…" : plural(total, "místo", "místa", "míst");
+  $("#cnt-mine").textContent = !state.user ? "přihlas se"
+    : `${plural(state.saved.size, "místo", "místa", "míst")}${state.trips.length ? ` · ${plural(state.trips.length, "cesta", "cesty", "cest")}` : ""}`;
   const rb = $("#btn-radius");
   rb.classList.toggle("tint", !!state.radiusKm);
   rb.classList.toggle("lens", !state.radiusKm);
@@ -221,25 +229,52 @@ function renderHeader() {
   $("#radius-label").textContent = state.radiusKm ? `Do ${state.radiusKm} km` : "Všude";
 }
 
+let styleShown = "community";
+function setView(mine) {
+  state.filter.clear();
+  if (mine && !requireLogin("Přihlas se a měj vlastní mapu s uloženými místy a cestami.")) return;
+  state.mine = mine;
+  if (!mine) state.activeTrip = null;
+  const want = mine ? "mine" : "community";
+  if (styleShown !== want) {
+    styleShown = want;
+    try { glLayer.getMaplibreMap().setStyle(STYLE[want]); } catch { /* mapa se ještě načítá */ }
+  }
+  fitted = false;
+  closeSheet();
+  render();
+  if (mine && !state.saved.size && !state.trips.length) {
+    openSheet("mine-empty", "Moje mapa",
+      h("div", { class: "empty-note" }, h("div", { class: "orb" }, "⭐"),
+        "Tvoje vlastní mapa je zatím prázdná. V Komunitní mapě otevři místo a dej Uložit do mé mapy – objeví se tady a můžeš z nich plánovat cesty.",
+        h("div", { style: "margin-top:14px" }, h("button", { class: "btn lg tint", onclick: () => setView(false) }, "Do Komunitní mapy"))));
+  }
+}
+
 function renderChips() {
   const box = $("#chips");
   box.replaceChildren();
   if (!state.places.length) return;
-  const counts = {};
-  for (const p of state.places) counts[p.category] = (counts[p.category] ?? 0) + 1;
   const trip = activeTrip();
   if (trip) {
-    box.append(h("button", { class: "chip lg on", style: "--c:#6f5cff", onclick: () => openTrip(trip.id) },
+    box.append(h("button", { class: "chip lg on", style: "--c:#d97706", onclick: () => openTrip(trip.id) },
       icon("route"), trip.name, h("span", { class: "count" }, trip.stops.length)),
     h("button", { class: "chip lg lens", onclick: () => { state.activeTrip = null; fitted = false; render(); } }, icon("x"), "Zavřít cestu"));
     return;
   }
-  if (state.user && state.saved.size) {
-    box.append(h("button", { class: `chip lg ${state.mine ? "on" : "lens"}`, style: "--c:#f59e0b",
-      onclick: () => { state.mine = !state.mine; render(); } }, icon(state.mine ? "starFill" : "star"), "Moje mapa", h("span", { class: "count" }, state.saved.size)));
+  const pool = state.mine ? state.places.filter(isSaved) : state.places;
+  const counts = {};
+  for (const p of pool) counts[p.category] = (counts[p.category] ?? 0) + 1;
+  if (state.mine) {
+    // Moje mapa: cesty jako první, pak typy uložených míst
+    for (const t of state.trips) {
+      box.append(h("button", { class: "chip lg lens", onclick: () => showTripOnMap(t) }, icon("route"), t.name, h("span", { class: "count" }, t.stops.length)));
+    }
+    box.append(h("button", { class: "chip lg lens", onclick: () => createTrip() }, icon("plus"), "Nová cesta"));
   }
+  if (!pool.length) return;
   box.append(h("button", { class: `chip lg all ${state.filter.size ? "lens" : "on"}`, onclick: () => { state.filter.clear(); render(); } },
-    "Vše", h("span", { class: "count" }, state.places.length)));
+    state.mine ? "Vše uložené" : "Vše", h("span", { class: "count" }, pool.length)));
   for (const c of state.categories) {
     if (!counts[c.id]) continue;
     box.append(h("button", {
@@ -530,7 +565,7 @@ function openList(tab = listTab) {
       h("button", { class: listSort === "near" ? "on" : "", onclick: () => { listSort = "near"; if (!state.me) startLocate(false); openList(); } }, "Nejblíž"),
       h("button", { class: listSort === "new" ? "on" : "", onclick: () => { listSort = "new"; openList(); } }, "Nejnovější")),
     listSort === "near" && !state.me ? h("p", { class: "muted" }, "Zjišťuji polohu… Zatím řadím od nejnovějších.") : null,
-    tab === "saved" && items.length ? h("button", { class: "btn lg btn-block", style: "margin-bottom:10px", onclick: () => { state.mine = true; state.activeTrip = null; closeSheet(); fitted = false; render(); } }, icon("map"), "Zobrazit Moji mapu") : null,
+    tab === "saved" && items.length ? h("button", { class: "btn lg btn-block", style: "margin-bottom:10px", onclick: () => setView(true) }, icon("map"), "Otevřít Moji mapu") : null,
     items.length ? h("ul", { class: "list" }, items.map((p) => placeItem(p)))
       : h("div", { class: "empty-note" }, h("div", { class: "orb" }, tab === "saved" ? "⭐" : "🗺️"), empty,
         !state.user && tab === "saved" ? h("div", { style: "margin-top:12px" }, h("button", { class: "btn lg tint", onclick: () => openAccount() }, "Přihlásit se")) : null));
@@ -742,8 +777,8 @@ async function deleteTrip(trip) {
 }
 
 function showTripOnMap(trip) {
+  if (!state.mine) setView(true);
   state.activeTrip = trip.id;
-  state.mine = false;
   closeSheet();
   render();
   const ps = trip.stops.map((s) => placeById(s.place_id)).filter(Boolean);
@@ -759,12 +794,32 @@ function openTrip(id) {
     const p = ps[i];
     if (i > 0 && p && ps[i - 1]) {
       const e = legEstimate(ps[i - 1], p, stop.mode);
+      const info = h("span", { class: "leg-text" }, h("span", { class: "spin-sm" }), `${modeOf(stop.mode).label} · hledám trasu…`);
+      const detail = h("div", { class: "leg-detail" });
+      const from = ps[i - 1];
+      routeLeg(from, p, stop.mode).then((r) => {
+        if (!info.isConnected) return;
+        const m = modeOf(stop.mode);
+        if (!r) {
+          info.replaceChildren(`${m.label} · ~${fmtDist(e.km)} · ~${fmtMin(e.min)} (odhad)`);
+          return;
+        }
+        info.replaceChildren(`${m.label} · ${fmtDist(r.km)} · ${fmtMin(r.min)}`);
+        if (r.transit) {
+          detail.replaceChildren(r.transit.walkOnly
+            ? h("span", {}, "MHD tu nejede – nejrychlejší je pěšky")
+            : h("span", { class: "lines" }, r.transit.lines.map((l) => h("span", { class: "line-pill" }, l)),
+              h("span", {}, ` · odjezd ${r.transit.departure}${r.transit.transfers ? ` · ${plural(r.transit.transfers, "přestup", "přestupy", "přestupů")}` : " · bez přestupu"}`)));
+        }
+        legResults.set(stop.id, r);
+        updateTripTotal();
+      });
       rows.push(h("li", { class: "leg" },
         h("div", { class: "leg-modes", role: "radiogroup", "aria-label": "Doprava" },
           MODES.map((m) => h("button", { class: `mode ${stop.mode === m.id ? "on" : ""}`, title: m.label, "aria-label": m.label, style: `--m:${m.color}`, onclick: () => setMode(trip, stop, m.id) }, m.emoji))),
-        h("div", { class: "leg-info" },
-          h("span", {}, `${modeOf(stop.mode).label} · ~${fmtDist(e.km)} · ~${fmtMin(e.min)}`),
-          h("a", { class: "leg-link", href: legUrl(ps[i - 1], p, stop.mode), target: "_blank", rel: "noopener" }, "Trasa v Google Maps ↗"))));
+        h("div", { class: "leg-info" }, info,
+          h("a", { class: "leg-link", href: legUrl(ps[i - 1], p, stop.mode), target: "_blank", rel: "noopener" }, "Otevřít v Google Maps ↗")),
+        detail));
     }
     const c = p ? cat(p.category) : cat("other");
     rows.push(h("li", { class: "item stop" },
@@ -782,13 +837,23 @@ function openTrip(id) {
   const tot = tripTotals(trip);
   const whole = wholeTripUrl(trip);
   const modes = legModes(trip);
+  const legResults = new Map();
+  const totalEl = h("span", {}, trip.stops.length > 1 ? ` · ~${fmtDist(tot.km)} · ~${fmtMin(tot.min)}` : "");
+  const noteEl = h("small", {}, trip.stops.length > 1 ? "Počítám přesné trasy…" : "Přidej aspoň dvě místa.");
+  function updateTripTotal() {
+    const legs = trip.stops.length - 1;
+    if (legResults.size !== legs) return;
+    let km = 0, min = 0;
+    for (const r of legResults.values()) { km += r.km; min += r.min; }
+    totalEl.textContent = ` · ${fmtDist(km)} · ${fmtMin(min)}`;
+    noteEl.textContent = modes.has("transit") ? "Přesné trasy; MHD podle nejbližšího spojení." : "Přesné trasy po silnicích a cestách.";
+  }
   const savedNotIn = state.places.filter((p) => isSaved(p) && !trip.stops.some((s) => s.place_id === p.id));
   openSheet("trip", trip.name,
     h("div", { class: "trip-summary card" },
       h("div", { style: "flex:1;min-width:0" },
         h("b", {}, plural(trip.stops.length, "zastávka", "zastávky", "zastávek")),
-        trip.stops.length > 1 ? h("span", {}, ` · ~${fmtDist(tot.km)} · ~${fmtMin(tot.min)}`) : null,
-        h("small", {}, trip.stops.length > 1 ? "Časy jsou odhad, přesnou trasu ukáže Google Maps." : "Přidej aspoň dvě místa.")),
+        totalEl, noteEl),
       h("button", { class: "icon-btn", "aria-label": "Přejmenovat", onclick: () => renameTrip(trip), html: ICON.edit }),
       h("button", { class: "icon-btn danger", "aria-label": "Smazat cestu", onclick: () => deleteTrip(trip), html: ICON.x })),
     h("div", { class: "btn-grid", style: "margin:12px 0 8px" },
@@ -814,25 +879,42 @@ function openTrip(id) {
       : h("p", { class: "muted" }, "Místa přidáš tlačítkem „Přidat do cesty“ v detailu místa, nebo si je ulož do Mé mapy a objeví se tady."));
 }
 
-// Vykreslení aktivní cesty: úseky barevně podle dopravy + čísla zastávek.
+// Vykreslení aktivní cesty: přesná trasa po silnicích / linkách MHD, barevně podle dopravy.
 const tripLayer = L.layerGroup().addTo(map);
+let tripRenderToken = 0;
+function drawSegment(seg, fallbackColor, layer) {
+  const m = modeOf(seg.kind === "transit" ? "transit" : seg.kind);
+  const color = seg.kind === "walking" ? modeOf("walking").color : (seg.color ?? fallbackColor ?? m.color);
+  const dash = seg.kind === "walking" ? "1 9" : seg.kind === "bicycling" ? "10 6" : null;
+  L.polyline(seg.coords, { color: "#fff", weight: 9, opacity: 0.95, lineCap: "round", lineJoin: "round", interactive: false }).addTo(layer);
+  L.polyline(seg.coords, { color, weight: seg.kind === "walking" ? 5 : 5.5, dashArray: dash, lineCap: "round", lineJoin: "round", interactive: false }).addTo(layer);
+}
 function renderTripLayer() {
+  const token = ++tripRenderToken;
   tripLayer.clearLayers();
   const trip = activeTrip();
   if (!trip) return;
   const ps = trip.stops.map((s) => placeById(s.place_id));
+  const legsLayer = L.layerGroup().addTo(tripLayer);
+  const bounds = [];
   trip.stops.forEach((stop, i) => {
     const p = ps[i];
     if (!p) return;
-    if (i > 0 && ps[i - 1]) {
-      const m = modeOf(stop.mode);
-      const line = [[ps[i - 1].lat, ps[i - 1].lng], [p.lat, p.lng]];
-      L.polyline(line, { color: "#fff", weight: 8, opacity: 0.9, interactive: false }).addTo(tripLayer);
-      L.polyline(line, { color: m.color, weight: 4.5, dashArray: m.dash, lineCap: "round", interactive: false }).addTo(tripLayer);
-      const mid = [(ps[i - 1].lat + p.lat) / 2, (ps[i - 1].lng + p.lng) / 2];
-      L.marker(mid, { icon: L.divIcon({ className: "", html: `<div class="leg-badge" style="--m:${m.color}">${m.emoji}</div>`, iconSize: [30, 30] }), interactive: false }).addTo(tripLayer);
-    }
+    bounds.push([p.lat, p.lng]);
     L.marker([p.lat, p.lng], { icon: L.divIcon({ className: "", html: `<div class="stop-badge">${i + 1}</div>`, iconSize: [24, 24], iconAnchor: [-6, 52] }), interactive: false, zIndexOffset: 2000 }).addTo(tripLayer);
+    if (i === 0 || !ps[i - 1]) return;
+    const a = ps[i - 1], m = modeOf(stop.mode);
+    // Dočasně rovná tenká čára, než dorazí přesná trasa.
+    const temp = L.polyline([[a.lat, a.lng], [p.lat, p.lng]], { color: m.color, weight: 2, opacity: 0.5, dashArray: "4 8", interactive: false }).addTo(legsLayer);
+    routeLeg(a, p, stop.mode).then((r) => {
+      if (token !== tripRenderToken) return;
+      if (!r) { temp.setStyle({ opacity: 0.9, weight: 4 }); return; }
+      temp.remove();
+      for (const seg of r.segments) drawSegment(seg, m.color, legsLayer);
+      const mid = r.segments.flatMap((sg) => sg.coords);
+      const c = mid[Math.floor(mid.length / 2)];
+      if (c) L.marker(c, { icon: L.divIcon({ className: "", html: `<div class="leg-badge" style="--m:${m.color}">${m.emoji}<small>${fmtMin(r.min)}</small></div>`, iconSize: [66, 30] }), interactive: false }).addTo(tripLayer);
+    });
   });
 }
 
@@ -1058,6 +1140,8 @@ $("#btn-recommend").addEventListener("click", openRecommend);
 $("#btn-add").addEventListener("click", () => openAdd());
 $("#btn-account").addEventListener("click", () => openAccount());
 $("#btn-radius").addEventListener("click", openRadius);
+$("#view-community").addEventListener("click", () => state.mine && setView(false));
+$("#view-mine").addEventListener("click", () => !state.mine && setView(true));
 $("#sheet-close").addEventListener("click", closeSheet);
 $("#backdrop").addEventListener("click", closeSheet);
 
