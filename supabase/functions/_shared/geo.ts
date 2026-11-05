@@ -1,7 +1,7 @@
 // Převod názvu místa na souřadnice z dat OpenStreetMap (zdarma, bez klíče).
 // Primárně Photon (komoot) – Nominatim blokuje IP adresy cloudových serverů.
 // Pravidla: max. 1 dotaz za sekundu, vlastní User-Agent.
-import type { ExtractedPlace } from "./ai.ts";
+import type { ExtractedPlace } from "./moderate.ts";
 
 export interface GeoResult {
   lat: number | null;
@@ -26,7 +26,7 @@ const tokens = (s: string) =>
   s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 1 && !GENERIC.has(t));
 
 /** Shoduje se nalezené místo s hledaným názvem? Stačí jedno společné rozlišující slovo. */
-function nameMatches(wanted: string, found: string): boolean {
+export function nameMatches(wanted: string, found: string): boolean {
   const w = tokens(wanted);
   if (!w.length) return true;
   const f = new Set(tokens(found));
@@ -126,14 +126,9 @@ export async function geocode(p: ExtractedPlace): Promise<GeoResult> {
     if (hit && !AREA_TYPES.has(hit.type)) return { lat: hit.lat, lng: hit.lng, precision: "exact", address: hit.display };
   }
 
-  if (p.approx_lat != null && p.approx_lng != null && p.confidence !== "low") {
+  // Odhad AI bereme jen při vysoké jistotě. Střed města jako náhradní poloha nestačí.
+  if (p.approx_lat != null && p.approx_lng != null && p.confidence === "high") {
     return { lat: p.approx_lat, lng: p.approx_lng, precision: "approx", address: null };
-  }
-
-  const area = [p.city, p.country].filter(Boolean).join(", ");
-  if (area) {
-    const hit = await lookup(area, p.city || area);
-    if (hit) return { lat: hit.lat, lng: hit.lng, precision: "approx", address: null };
   }
   return { lat: null, lng: null, precision: "none", address: null };
 }

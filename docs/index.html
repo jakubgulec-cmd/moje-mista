@@ -3,9 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Moje místa</title>
-  <meta name="theme-color" content="#f4f5fb" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#0b0d17" media="(prefers-color-scheme: dark)">
+  <title>Moje místa – mapa míst z reels</title>
+  <meta name="description" content="Společná mapa míst z cestovatelských Instagram reels.">
+  <meta name="theme-color" content="#eef1f6">
+  <meta name="color-scheme" content="light">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -20,71 +21,76 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <!-- Lom světla pro liquid glass (Chromium umí SVG filtr v backdrop-filter) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <filter id="lg-refract" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.012 0.018" numOctaves="2" seed="11" result="noise"/>
+      <feGaussianBlur in="noise" stdDeviation="2.5" result="soft"/>
+      <feDisplacementMap in="SourceGraphic" in2="soft" scale="34" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </svg>
+
   <div id="map" aria-label="Mapa míst"></div>
 
   <header class="topbar">
-    <div class="brand glass">
-      <div class="brand-logo" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><path d="M12 22s7-6.1 7-12a7 7 0 1 0-14 0c0 5.9 7 12 7 12Z"/><circle cx="12" cy="10" r="2.6"/></svg>
+    <div class="bar">
+      <div class="brand lg">
+        <div class="brand-logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M12 22s7-6.1 7-12a7 7 0 1 0-14 0c0 5.9 7 12 7 12Z"/><circle cx="12" cy="10" r="2.6"/></svg>
+        </div>
+        <div class="brand-text">
+          <div class="brand-title">Moje místa</div>
+          <div id="brand-sub" class="brand-sub">Načítám…</div>
+        </div>
       </div>
-      <div class="brand-text">
-        <div class="brand-title">Moje místa</div>
-        <div id="brand-sub" class="brand-sub">Načítám…</div>
-      </div>
+      <button id="btn-radius" class="lg pill-btn" aria-label="Vzdálenost">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5"/></svg>
+        <span id="radius-label">Všude</span>
+      </button>
     </div>
     <div id="chips" class="chips" role="toolbar" aria-label="Filtr podle typu"></div>
   </header>
 
-  <nav class="dock glass" aria-label="Akce">
+  <nav class="dock lg" aria-label="Akce">
     <button id="btn-locate" class="dock-btn" aria-label="Moje poloha">
-      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="7.5"/></svg>
+      <svg viewBox="0 0 24 24"><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2.2"/></svg>
       <span>Poloha</span>
     </button>
     <button id="btn-list" class="dock-btn" aria-label="Seznam míst">
-      <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.2"/><circle cx="3.5" cy="12" r="1.2"/><circle cx="3.5" cy="18" r="1.2"/></svg>
+      <svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.1"/><circle cx="4.5" cy="12" r="1.1"/><circle cx="4.5" cy="18" r="1.1"/></svg>
       <span>Seznam</span>
     </button>
-    <button id="btn-recommend" class="dock-main" aria-label="Doporuč mi místo">
-      <svg viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15Z"/></svg>
-    </button>
-    <button id="btn-add" class="dock-btn" aria-label="Přidat místo">
+    <button id="btn-add" class="dock-main lg tint" aria-label="Přidat reelsko">
       <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-      <span>Přidat</span>
     </button>
-    <a class="dock-btn" href="https://t.me/mapinstabot" target="_blank" rel="noopener" aria-label="Telegram bot">
-      <svg viewBox="0 0 24 24"><path d="M21.5 4.5 2.8 11.7c-.9.4-.9 1.6.1 1.9l4.6 1.4 1.8 5.6c.3.8 1.3 1 1.9.4l2.6-2.5 4.7 3.4c.7.5 1.7.1 1.9-.7L23 5.9c.2-1-.6-1.8-1.5-1.4Z"/><path d="m7.5 15 9.5-6.5"/></svg>
-      <span>Bot</span>
-    </a>
+    <button id="btn-recommend" class="dock-btn" aria-label="Tipy na místa">
+      <svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.9L19 9.7l-5.2 1.8L12 16.5l-1.8-5L5 9.7l5.2-1.8L12 3Z"/><path d="M18.5 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7.7-1.8Z"/></svg>
+      <span>Tipy</span>
+    </button>
+    <button id="btn-account" class="dock-btn" aria-label="Účet">
+      <span id="avatar" class="avatar"><svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20c1.4-3.6 4.2-5.4 7.5-5.4s6.1 1.8 7.5 5.4"/></svg></span>
+      <span id="account-label">Účet</span>
+    </button>
   </nav>
 
-  <div id="empty" class="empty glass-strong" hidden>
-    <div class="empty-orb">✨</div>
-    <h2>Tvoje mapa je zatím prázdná</h2>
-    <p>Sdílej reelsko z Instagramu do Telegram bota a místo se tu objeví samo.</p>
-    <div class="empty-actions">
-      <a class="btn btn-primary" href="https://t.me/mapinstabot" target="_blank" rel="noopener">Otevřít bota</a>
-      <button id="empty-add" class="btn btn-glass">Přidat ručně</button>
-    </div>
-  </div>
-
-  <div id="banner" class="banner glass-strong" hidden></div>
-
   <div id="backdrop" class="backdrop" hidden></div>
-  <section id="sheet" class="sheet glass-strong" hidden aria-modal="true" role="dialog">
+  <section id="sheet" class="sheet" hidden aria-modal="true" role="dialog">
     <div class="sheet-handle"></div>
     <div class="sheet-head">
       <h2 id="sheet-title"></h2>
-      <button id="sheet-close" class="round-btn" aria-label="Zavřít">
-        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      <button id="sheet-close" class="lg round-btn" aria-label="Zavřít">
+        <svg viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>
       </button>
     </div>
     <div id="sheet-body" class="sheet-body"></div>
   </section>
 
-  <div id="toast" class="toast glass-strong" role="status" hidden></div>
+  <div id="toast" class="toast lg" role="status" hidden></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"
+          integrity="sha384-eXVCORTRlv4FUUgS/xmOyr66XBVraen8ATNLMESp92FKXLAMiKkerixTiBvXriZr" crossorigin=""></script>
   <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"
           integrity="sha384-5+cfbwT0iiub6VsQAdn6yz16nr6sDiQoHx6tm4O8OVYXHYOxcffFmCJBL0dgdvGp" crossorigin=""></script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"

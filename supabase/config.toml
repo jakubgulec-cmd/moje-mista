@@ -1,7 +1,4 @@
 project_id = "mapinstabot"
 
-[functions.api]
-verify_jwt = false
-
-[functions.telegram]
+[functions.submit]
 verify_jwt = false

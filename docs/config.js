@@ -1,4 +1,5 @@
-// Veřejná adresa API (Supabase Edge Function). Není tajná – přístup chrání klíč z Telegram bota.
+// Veřejná konfigurace (publishable klíč je určený pro prohlížeč; data chrání pravidla v databázi).
 window.APP_CONFIG = {
-  apiBase: "https://okiuawfcatqpzwultuud.supabase.co/functions/v1/api",
+  supabaseUrl: "https://okiuawfcatqpzwultuud.supabase.co",
+  supabaseKey: "sb_publishable_OCaZ1W4VnRyxNwbAjPhe4w_1C0D8LO6",
 };

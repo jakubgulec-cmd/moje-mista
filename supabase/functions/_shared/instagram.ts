@@ -1,45 +1,38 @@
-// Získání veřejných informací o reelsku bez přihlášení.
-// Instagram nemá veřejné API pro cizí příspěvky, takže zkoušíme veřejné stránky
-// (embed a meta tagy). Když selžou, pipeline pracuje jen s tím, co máme.
+// Veřejné informace o reelsku bez přihlášení.
+// Instagram nepřihlášeným požadavkům popisky ani video nevydá, proto používáme
+// InstaFix (open-source proxy pro náhledy odkazů): vrací popisek, autora a video/obrázek.
 
 export interface ReelInfo {
-  url: string;
   shortcode: string;
+  url: string;
   caption: string | null;
   author: string | null;
-  location: string | null;
-  thumbnailUrl: string | null;
-  method: string[]; // které zdroje vrátily data (pro ladění)
+  mediaUrl: string | null;
+  mediaKind: "video" | "image" | null;
 }
 
-const URL_RE = /https?:\/\/(?:www\.|m\.)?instagram\.com\/(?:[\w.]+\/)?(?:reel|reels|p|tv)\/([A-Za-z0-9_-]+)[^\s]*/i;
+export interface Media {
+  data: string; // base64
+  mimeType: string;
+  bytes: number;
+}
 
-const HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36",
-  "Accept-Language": "cs,en;q=0.8",
-  Accept: "text/html,application/xhtml+xml",
-};
+const URL_RE = /https?:\/\/(?:www\.|m\.)?instagram\.com\/(?:[\w.]+\/)?(?:reel|reels|p|tv)\/([A-Za-z0-9_-]{5,})/i;
+const INSTAFIX = "https://uuinstagram.com";
+const BOT_UA = "Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)";
+const MAX_MEDIA_BYTES = 18_000_000; // Gemini inline limit je ~20 MB na celý požadavek
 
-export function findInstagramUrl(text: string): { url: string; shortcode: string } | null {
+export function parseInstagramUrl(text: string): { shortcode: string; url: string } | null {
   const m = text.match(URL_RE);
-  return m ? { url: m[0], shortcode: m[1] } : null;
+  return m ? { shortcode: m[1], url: `https://www.instagram.com/reel/${m[1]}/` } : null;
 }
 
 function decodeEntities(s: string): string {
   return s
     .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
     .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)))
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&");
-}
-
-function htmlToText(s: string): string {
-  return decodeEntities(s.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "")).trim();
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&");
 }
 
 function meta(html: string, prop: string): string | null {
@@ -48,122 +41,47 @@ function meta(html: string, prop: string): string | null {
   return m ? decodeEntities(m[1]) : null;
 }
 
-/** Název místa z JSONu ve stránce (štítek polohy u příspěvku). */
-function locationFromJson(html: string): string | null {
-  const unescaped = html.replace(/\\"/g, '"');
-  const m = unescaped.match(/"location":\{[^{}]*?"name":"([^"]+)"/);
-  if (!m) return null;
+export async function fetchReel(shortcode: string, url: string): Promise<ReelInfo> {
+  const info: ReelInfo = { shortcode, url, caption: null, author: null, mediaUrl: null, mediaKind: null };
   try {
-    return JSON.parse(`"${m[1]}"`);
-  } catch {
-    return m[1];
-  }
-}
-
-async function get(url: string): Promise<string | null> {
-  try {
-    const res = await fetch(url, { headers: HEADERS, redirect: "follow", signal: AbortSignal.timeout(10000) });
-    if (!res.ok) return null;
+    const res = await fetch(`${INSTAFIX}/p/${shortcode}/`, {
+      headers: { "User-Agent": BOT_UA },
+      redirect: "manual",
+      signal: AbortSignal.timeout(12000),
+    });
+    if (!res.ok) return info;
     const html = await res.text();
-    // Přesměrování na přihlášení = nic užitečného.
-    if (res.url.includes("/accounts/login")) return null;
-    return html;
+    info.caption = meta(html, "og:description")?.trim() || null;
+    info.author = meta(html, "twitter:title")?.replace(/^@/, "").trim() || null;
+    const video = meta(html, "og:video") ?? meta(html, "twitter:player:stream");
+    const image = meta(html, "og:image");
+    if (video) {
+      info.mediaUrl = new URL(video, INSTAFIX).toString();
+      info.mediaKind = "video";
+    } else if (image) {
+      info.mediaUrl = new URL(image, INSTAFIX).toString();
+      info.mediaKind = "image";
+    }
   } catch {
-    return null;
+    // vrátíme, co máme
   }
-}
-
-// InstaFix (open-source proxy pro náhledy odkazů v Discordu/Telegramu) vrací popisek a náhled
-// v meta tazích. Instagram sám nepřihlášeným požadavkům popisky nevydá.
-const INSTAFIX_HOSTS = ["https://uuinstagram.com"];
-const BOT_UA = "Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)";
-
-async function fromInstaFix(shortcode: string, info: ReelInfo): Promise<void> {
-  for (const host of INSTAFIX_HOSTS) {
-    try {
-      const res = await fetch(`${host}/p/${shortcode}/`, {
-        headers: { "User-Agent": BOT_UA },
-        redirect: "manual",
-        signal: AbortSignal.timeout(12000),
-      });
-      if (!res.ok) continue;
-      const html = await res.text();
-      const caption = meta(html, "og:description");
-      const author = meta(html, "twitter:title");
-      const image = meta(html, "og:image");
-      if (caption && !info.caption) info.caption = caption.trim();
-      if (author && !info.author) info.author = author.replace(/^@/, "").trim();
-      if (image && !info.thumbnailUrl) info.thumbnailUrl = new URL(image, host).toString();
-      if (caption || image) {
-        info.method.push("instafix");
-        return;
-      }
-    } catch {
-      // další zdroj
-    }
-  }
-}
-
-export async function fetchReel(url: string, shortcode: string): Promise<ReelInfo> {
-  const info: ReelInfo = { url, shortcode, caption: null, author: null, location: null, thumbnailUrl: null, method: [] };
-
-  // 0) InstaFix – v současnosti jediný spolehlivý zdroj popisku bez přihlášení.
-  await fromInstaFix(shortcode, info);
-  if (info.caption && info.thumbnailUrl) return info;
-
-  // 1) Embed stránka s popiskem (Instagram ji občas pustí i bez přihlášení).
-  const embed = await get(`https://www.instagram.com/p/${shortcode}/embed/captioned/`);
-  if (embed) {
-    const cap = embed.match(/class="Caption"[^>]*>([\s\S]*?)<div class="CaptionComments"/);
-    if (cap) {
-      const user = cap[1].match(/class="CaptionUsername"[^>]*>([^<]+)</);
-      if (user) info.author = decodeEntities(user[1]).trim();
-      const body = cap[1].replace(/<a[^>]*class="CaptionUsername"[^>]*>[^<]*<\/a>/, "");
-      const text = htmlToText(body);
-      if (text) info.caption = text;
-    }
-    const img = embed.match(/class="EmbeddedMediaImage"[^>]*src="([^"]+)"/) ?? embed.match(/<img[^>]+src="([^"]+)"[^>]*class="EmbeddedMediaImage"/);
-    if (img) info.thumbnailUrl = decodeEntities(img[1]);
-    info.location = locationFromJson(embed);
-    if (info.caption || info.thumbnailUrl) info.method.push("embed");
-  }
-
-  // 2) Hlavní stránka – meta tagy (popisek bývá v og:description / og:title).
-  if (!info.caption || !info.thumbnailUrl) {
-    const page = await get(`https://www.instagram.com/reel/${shortcode}/`);
-    if (page) {
-      const desc = meta(page, "og:description") ?? meta(page, "description");
-      const title = meta(page, "og:title");
-      // Formát: '123 likes, 4 comments - user on 1. 3. 2025: "popisek"'
-      const quoted = (desc ?? title ?? "").match(/:\s*"([\s\S]+)"\s*\.?$/);
-      if (!info.caption && (quoted || desc)) info.caption = (quoted ? quoted[1] : desc)!.trim();
-      if (!info.author) {
-        const a = (desc ?? "").match(/-\s*([\w.]+)\s+on\s/);
-        if (a) info.author = a[1];
-      }
-      if (!info.thumbnailUrl) info.thumbnailUrl = meta(page, "og:image");
-      if (!info.location) info.location = locationFromJson(page);
-      if (info.caption || info.thumbnailUrl) info.method.push("page");
-    }
-  }
-
   return info;
 }
 
-/** Stáhne náhled jako base64 pro vision model. */
-export async function fetchImageBase64(url: string): Promise<{ data: string; mimeType: string } | null> {
+/** Stáhne video nebo obrázek pro AI kontrolu (base64). */
+export async function fetchMedia(url: string): Promise<Media | null> {
   try {
-    const res = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(10000) });
+    const res = await fetch(url, { headers: { "User-Agent": BOT_UA }, signal: AbortSignal.timeout(25000) });
     if (!res.ok) return null;
-    const mimeType = res.headers.get("content-type")?.split(";")[0] ?? "image/jpeg";
-    if (!mimeType.startsWith("image/")) return null;
+    const mimeType = res.headers.get("content-type")?.split(";")[0] ?? "";
+    if (!mimeType.startsWith("video/") && !mimeType.startsWith("image/")) return null;
+    const len = Number(res.headers.get("content-length") ?? 0);
+    if (len > MAX_MEDIA_BYTES) return null;
     const bytes = new Uint8Array(await res.arrayBuffer());
-    if (bytes.length > 4_000_000) return null;
+    if (bytes.length > MAX_MEDIA_BYTES) return null;
     let binary = "";
-    for (let i = 0; i < bytes.length; i += 0x8000) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-    }
-    return { data: btoa(binary), mimeType };
+    for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return { data: btoa(binary), mimeType, bytes: bytes.length };
   } catch {
     return null;
   }
