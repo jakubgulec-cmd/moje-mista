@@ -161,6 +161,9 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
   padding: 6px; border-radius: 999px;
 }
 .dock:active { transform: translateX(-50%); }
+/* Otevřený panel: dok uhne dolů, ať neprosvítá přes obsah panelu */
+.dock { transition: transform .4s var(--ease), opacity .25s; }
+.sheet-open .dock { transform: translate(-50%, 140%); opacity: 0; pointer-events: none; }
 .dock-btn {
   position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 0 6px; margin: 0 1px;
   border: none; background: none; color: var(--fg-2); font-size: 10.5px; font-weight: 600; text-decoration: none;
@@ -320,6 +323,50 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .ig-link b { display: block; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ig-link small { display: block; font-size: 12px; color: var(--fg-2); }
 .ig-link > span:last-child { min-width: 0; }
+
+
+/* ---------------------------------------------------------------------
+   Moje mapa a cesty
+   --------------------------------------------------------------------- */
+.pin-star { position: absolute; left: -3px; top: -3px; width: 19px; height: 19px; border-radius: 50%; background: #f59e0b; color: #fff; display: grid; place-items: center; box-shadow: 0 0 0 2px #fff; z-index: 2; }
+.pin-star svg { width: 11px; height: 11px; }
+.chip svg { width: 15px; height: 15px; }
+
+.btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+.btn-grid .btn { padding: 11px 10px; font-size: 13.5px; white-space: normal; text-align: center; line-height: 1.2; }
+.btn.on-star { background: rgba(245, 158, 11, .16); color: #b45309; }
+
+.seg-wide { display: flex; width: 100%; }
+.seg-wide button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.seg-wide svg { width: 15px; height: 15px; }
+
+.icon-btn { width: 34px; height: 34px; flex: none; border: none; border-radius: 50%; display: grid; place-items: center; background: var(--fill); color: var(--fg-2); transition: transform .3s var(--spring); }
+.icon-btn svg { width: 16px; height: 16px; stroke-width: 2.1; }
+.icon-btn:active { transform: scale(.9); }
+.icon-btn:disabled { opacity: .3; }
+.icon-btn.danger { color: var(--danger); }
+
+.trip-summary { display: flex; align-items: center; gap: 8px; padding: 12px 12px 12px 16px; }
+.trip-summary b { font-size: 15px; }
+.trip-summary span { color: var(--fg-2); font-size: 14px; }
+.trip-summary small { display: block; color: var(--fg-3); font-size: 12px; margin-top: 2px; }
+
+.trip-list { gap: 0; }
+.trip-list .stop { gap: 10px; padding: 8px 8px 8px 10px; }
+.stop-num { width: 24px; height: 24px; flex: none; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 800; color: #fff; background: var(--grad); }
+.stop-tools { display: flex; gap: 4px; }
+.stop-tools .icon-btn { width: 30px; height: 30px; }
+
+.leg { list-style: none; margin: 0 0 0 21px; padding: 8px 0 8px 22px; border-left: 2px dashed var(--fill-2); }
+.leg-modes { display: flex; gap: 6px; flex-wrap: wrap; }
+.mode { width: 40px; height: 36px; border: none; border-radius: 12px; font-size: 18px; background: var(--card); box-shadow: 0 1px 2px rgba(10,14,40,.06); filter: grayscale(.8); opacity: .65; transition: transform .3s var(--spring), filter .2s, opacity .2s; }
+.mode.on { filter: none; opacity: 1; background: color-mix(in srgb, var(--m) 16%, white); box-shadow: inset 0 0 0 2px var(--m); }
+.mode:active { transform: scale(.9); }
+.leg-info { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; margin-top: 6px; font-size: 12.5px; color: var(--fg-2); }
+.leg-link { color: var(--accent); font-weight: 650; text-decoration: none; }
+
+.leg-badge { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 15px; background: #fff; box-shadow: 0 0 0 2.5px var(--m), 0 4px 10px rgba(0,0,0,.25); }
+.stop-badge { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 800; color: #fff; background: var(--grad); box-shadow: 0 0 0 2px #fff, 0 3px 8px rgba(0,0,0,.3); }
 
 /* Dlaždice kategorií (tipy) */
 .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
