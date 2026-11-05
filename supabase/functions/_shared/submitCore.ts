@@ -90,7 +90,7 @@ async function run(userId: string | null, input: string, dryRun: boolean, debug:
   debug.push(`instafix: autor=${reel.author} médium=${reel.mediaKind} popisek=${reel.caption ? reel.caption.length + " znaků" : "ne"}`);
   const t0 = Date.now();
   const media = await fetchMedia(reel.mediaUrl);
-  debug.push(`stažení: ${media ? Math.round(media.bytes / 1024) + " kB" : "selhalo"} za ${Date.now() - t0} ms`);
+  debug.push(`stažení: ${media ? Math.round(media.bytes.length / 1024) + " kB" : "selhalo"} za ${Date.now() - t0} ms`);
   if (!media) {
     return { shortcode: ig.shortcode, result: { status: "no_data", message: "Video reelska se nepodařilo stáhnout (možná je moc dlouhé). Zkus jiné." } };
   }

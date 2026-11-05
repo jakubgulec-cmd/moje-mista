@@ -12,15 +12,14 @@ export interface ReelInfo {
 }
 
 export interface Media {
-  data: string; // base64
+  bytes: Uint8Array;
   mimeType: string;
-  bytes: number;
 }
 
 const URL_RE = /https?:\/\/(?:www\.|m\.)?instagram\.com\/(?:[\w.]+\/)?(?:reel|reels|p|tv)\/([A-Za-z0-9_-]{5,})/i;
 const INSTAFIX = "https://uuinstagram.com";
 const BOT_UA = "Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)";
-const MAX_MEDIA_BYTES = 18_000_000; // Gemini inline limit je ~20 MB na celý požadavek
+const MAX_MEDIA_BYTES = 60_000_000; // delší videa už nemá smysl kontrolovat
 
 export function parseInstagramUrl(text: string): { shortcode: string; url: string } | null {
   const m = text.match(URL_RE);
@@ -68,10 +67,10 @@ export async function fetchReel(shortcode: string, url: string): Promise<ReelInf
   return info;
 }
 
-/** Stáhne video nebo obrázek pro AI kontrolu (base64). */
+/** Stáhne video nebo obrázek pro AI kontrolu. */
 export async function fetchMedia(url: string): Promise<Media | null> {
   try {
-    const res = await fetch(url, { headers: { "User-Agent": BOT_UA }, signal: AbortSignal.timeout(25000) });
+    const res = await fetch(url, { headers: { "User-Agent": BOT_UA }, signal: AbortSignal.timeout(40000) });
     if (!res.ok) return null;
     const mimeType = res.headers.get("content-type")?.split(";")[0] ?? "";
     if (!mimeType.startsWith("video/") && !mimeType.startsWith("image/")) return null;
@@ -79,9 +78,7 @@ export async function fetchMedia(url: string): Promise<Media | null> {
     if (len > MAX_MEDIA_BYTES) return null;
     const bytes = new Uint8Array(await res.arrayBuffer());
     if (bytes.length > MAX_MEDIA_BYTES) return null;
-    let binary = "";
-    for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-    return { data: btoa(binary), mimeType, bytes: bytes.length };
+    return { bytes, mimeType };
   } catch {
     return null;
   }

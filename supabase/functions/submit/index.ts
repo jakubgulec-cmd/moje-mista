@@ -30,6 +30,8 @@ Deno.serve(async (req) => {
     return json(result);
   } catch (e) {
     console.error(e);
-    return json({ status: "error", message: e instanceof Error ? e.message : String(e) }, 500);
+    const message = e instanceof Error ? e.message : String(e);
+    await log(auth.user.id, input.match(/[A-Za-z0-9_-]{5,}/)?.[0] ?? null, { status: "error", message }).catch(() => {});
+    return json({ status: "error", message }, 500);
   }
 });

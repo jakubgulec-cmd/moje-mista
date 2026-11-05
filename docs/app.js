@@ -1,6 +1,6 @@
 /* global L, APP_CONFIG */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/+esm";
-import { initGlass } from "./glass.js?v=202611051243";
+import { initGlass } from "./glass.js?v=202611051250";
 
 const sb = createClient(APP_CONFIG.supabaseUrl, APP_CONFIG.supabaseKey, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
@@ -492,9 +492,10 @@ function openAdd(prefill = "", autoSubmit = false) {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}`, apikey: APP_CONFIG.supabaseKey },
         body: JSON.stringify({ url }),
       });
-      r = await res.json();
-    } catch {
-      r = { status: "error", message: "Spojení selhalo. Zkus to znovu." };
+      const text = await res.text();
+      try { r = JSON.parse(text); } catch { r = { status: "error", message: `Server neodpověděl správně (HTTP ${res.status}). Zkus to za chvíli znovu.` }; }
+    } catch (err) {
+      r = { status: "error", message: `Spojení selhalo (${err?.message ?? "neznámá chyba"}). Zkus to znovu.` };
     }
     clearInterval(timer);
     submit.disabled = false;

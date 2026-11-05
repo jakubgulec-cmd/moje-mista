@@ -120,15 +120,62 @@ Popisek:
 ${caption ?? "(bez popisku)"}`;
 }
 
+const INLINE_LIMIT = 3_000_000; // menší soubory posíláme vložené, větší přes Files API
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
+/** Nahraje soubor do Gemini Files API a počká, až je zpracovaný. Vrátí URI souboru. */
+async function uploadToGemini(media: Media, apiKey: string): Promise<string> {
+  const start = await fetch("https://generativelanguage.googleapis.com/upload/v1beta/files", {
+    method: "POST",
+    headers: {
+      "x-goog-api-key": apiKey,
+      "X-Goog-Upload-Protocol": "resumable",
+      "X-Goog-Upload-Command": "start",
+      "X-Goog-Upload-Header-Content-Length": String(media.bytes.length),
+      "X-Goog-Upload-Header-Content-Type": media.mimeType,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ file: { display_name: "reel" } }),
+    signal: AbortSignal.timeout(20000),
+  });
+  const uploadUrl = start.headers.get("x-goog-upload-url");
+  if (!start.ok || !uploadUrl) throw new Error(`Gemini upload start ${start.status}`);
+  const up = await fetch(uploadUrl, {
+    method: "POST",
+    headers: { "X-Goog-Upload-Command": "upload, finalize", "X-Goog-Upload-Offset": "0", "Content-Type": media.mimeType },
+    body: media.bytes,
+    signal: AbortSignal.timeout(90000),
+  });
+  if (!up.ok) throw new Error(`Gemini upload ${up.status}`);
+  let file = (await up.json()).file;
+  // Video se chvíli zpracovává.
+  for (let i = 0; i < 30 && file.state === "PROCESSING"; i++) {
+    await new Promise((r) => setTimeout(r, 1500));
+    const st = await fetch(`https://generativelanguage.googleapis.com/v1beta/${file.name}`, { headers: { "x-goog-api-key": apiKey } });
+    file = await st.json();
+  }
+  if (file.state !== "ACTIVE") throw new Error(`Gemini soubor ve stavu ${file.state}`);
+  return file.uri;
+}
+
 export async function moderate(media: Media, caption: string | null, author: string | null, categories: Category[]): Promise<Verdict> {
   const apiKey = Deno.env.get("GEMINI_API_KEY");
   if (!apiKey) throw new Error("Chybí GEMINI_API_KEY");
+
+  const mediaPart = media.bytes.length > INLINE_LIMIT
+    ? { file_data: { mime_type: media.mimeType, file_uri: await uploadToGemini(media, apiKey) } }
+    : { inline_data: { mime_type: media.mimeType, data: toBase64(media.bytes) } };
 
   const body = JSON.stringify({
     contents: [{
       role: "user",
       parts: [
-        { inline_data: { mime_type: media.mimeType, data: media.data } },
+        mediaPart,
         { text: prompt(categories, caption, author, media.mimeType.startsWith("video/") ? "celé video reelska" : "obrázek z příspěvku") },
       ],
     }],
