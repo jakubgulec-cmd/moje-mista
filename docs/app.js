@@ -1,6 +1,6 @@
 /* global L, APP_CONFIG */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/+esm";
-import { initGlass } from "./glass.js?v=202611051238";
+import { initGlass } from "./glass.js?v=202611051243";
 
 const sb = createClient(APP_CONFIG.supabaseUrl, APP_CONFIG.supabaseKey, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
@@ -453,6 +453,9 @@ function recommend(categoryId) {
 }
 
 // ---------- přidání reelska ----------
+const REEL_RE = /https?:\/\/(?:www\.|m\.)?instagram\.com\/(?:[\w.]+\/)?(?:reel|reels|p|tv)\/[A-Za-z0-9_-]{5,}[^\s]*/i;
+const extractReel = (text) => (text ?? "").match(REEL_RE)?.[0] ?? null;
+
 const STEPS = ["Kontroluji, jestli už reelsko v mapě není", "Stahuji reelsko", "AI ověřuje, že jde o cestovatelský tip", "Hledám místo na mapě", "Ukládám"];
 
 function openAdd(prefill = "", autoSubmit = false) {
@@ -460,18 +463,18 @@ function openAdd(prefill = "", autoSubmit = false) {
     if (prefill) sessionStorage.setItem(SHARE_KEY, prefill);
     return;
   }
-  const input = h("input", { type: "url", inputmode: "url", placeholder: "https://www.instagram.com/reel/…", value: prefill, autocomplete: "off" });
+  const input = h("input", { type: "text", inputmode: "url", placeholder: "https://www.instagram.com/reel/…", value: extractReel(prefill) ?? prefill, autocomplete: "off" });
   const pasteBtn = h("button", { class: "btn lg", type: "button", "aria-label": "Vložit ze schránky", onclick: async () => {
     try {
       const t = await navigator.clipboard.readText();
-      if (t) { input.value = t.trim(); form.requestSubmit(); }
+      if (t) { input.value = extractReel(t) ?? t.trim(); form.requestSubmit(); }
     } catch { toast("Schránka není dostupná – vlož odkaz ručně"); input.focus(); }
   } }, icon("paste"), "Vložit");
   const out = h("div");
   const submit = h("button", { class: "btn lg tint btn-block", type: "submit" }, "Přidat do mapy");
   const form = h("form", { class: "stack", onsubmit: async (e) => {
     e.preventDefault();
-    const url = input.value.trim();
+    const url = extractReel(input.value) ?? input.value.trim();
     if (!url) return input.focus();
     submit.disabled = true;
     const steps = h("ul", { class: "steps card" }, STEPS.map((s) => h("li", {}, h("span", { class: "dot" }), s)));
@@ -511,7 +514,8 @@ function openAdd(prefill = "", autoSubmit = false) {
     h("li", {}, h("span", { class: "ico" }, "🔒"), h("span", {}, h("b", {}, "Jedno reelsko na místo na 7 dní. "), "Kdo je první, toho reelsko u místa svítí.")),
     h("li", {}, h("span", { class: "ico" }, "📲"), h("span", {}, h("b", {}, "Jak sdílet: "), "v Instagramu dej Sdílet → Kopírovat odkaz a tady Vložit. Na Androidu můžeš sdílet rovnou do aplikace."))));
   openSheet("add", "Přidat reelsko", form);
-  if (autoSubmit && prefill) form.requestSubmit();
+  form.noValidate = true;
+  if (autoSubmit && prefill) setTimeout(() => form.requestSubmit(), 50);
 }
 
 function resultView(r) {
@@ -646,7 +650,8 @@ function handleShare() {
 function boot() {
   // Sdílení z jiné aplikace (Android: Web Share Target)
   const q = new URLSearchParams(location.search);
-  const shared = [q.get("url"), q.get("text"), q.get("title")].filter(Boolean).join(" ").trim();
+  const raw = [q.get("url"), q.get("text"), q.get("title")].filter(Boolean).join(" ").trim();
+  const shared = extractReel(raw) ?? raw;
   if (location.search || location.hash) history.replaceState(null, "", location.pathname);
   ["mm.places", "mm.appKey"].forEach((k) => localStorage.removeItem(k));
 
