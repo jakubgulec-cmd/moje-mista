@@ -1,6 +1,6 @@
 /* global L, APP_CONFIG */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/+esm";
-import { initGlass } from "./glass.js?v=202611051502";
+import { initGlass } from "./glass.js?v=202611051506";
 
 const sb = createClient(APP_CONFIG.supabaseUrl, APP_CONFIG.supabaseKey, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
@@ -118,7 +118,23 @@ async function loadMine() {
 }
 
 // ---------- mapa ----------
-const map = L.map("map", { zoomControl: false, worldCopyJump: true, minZoom: 2, maxZoom: 19 }).setView([48.5, 14], 4);
+// Mapa nejde vytáhnout mimo svět: svisle pevné okraje, vodorovně se svět opakuje.
+const map = L.map("map", {
+  zoomControl: false,
+  worldCopyJump: true,
+  minZoom: 2,
+  maxZoom: 19,
+  maxBounds: L.latLngBounds([-85.05, -100000], [85.05, 100000]),
+  maxBoundsViscosity: 1.0,
+  bounceAtZoomLimits: false,
+}).setView([48.5, 14], 4);
+// Nejmenší zoom takový, aby svět vždy vyplnil celou výšku obrazovky (žádná šedá místa).
+function fitMinZoom() {
+  const h = map.getSize().y;
+  map.setMinZoom(Math.max(2, Math.ceil(Math.log2(Math.max(h, 256) / 256))));
+}
+fitMinZoom();
+map.on("resize", fitMinZoom);
 L.maplibreGL({
   style: "https://tiles.openfreemap.org/styles/liberty",
   attribution: '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>',
@@ -273,8 +289,63 @@ function openSheet(name, title, ...content) {
   $("#sheet-title").textContent = title;
   $("#sheet-body").replaceChildren(...content);
   $("#sheet-body").scrollTop = 0;
+  $("#sheet").style.transform = "";
   $("#sheet").hidden = false;
   $("#backdrop").hidden = false;
+}
+
+// Zavření panelu stažením dolů (za horní lištu panelu).
+(() => {
+  const sheet = $("#sheet");
+  let startY = 0, lastY = 0, lastT = 0, speed = 0, dragging = false;
+  const grab = (e) => e.target.closest(".sheet-handle, .sheet-head") && !e.target.closest("button");
+  sheet.addEventListener("pointerdown", (e) => {
+    if (!grab(e)) return;
+    dragging = true;
+    startY = lastY = e.clientY;
+    lastT = performance.now();
+    speed = 0;
+    sheet.style.transition = "none";
+    sheet.setPointerCapture(e.pointerId);
+  });
+  sheet.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const now = performance.now();
+    speed = (e.clientY - lastY) / Math.max(1, now - lastT);
+    lastY = e.clientY;
+    lastT = now;
+    const dy = Math.max(0, e.clientY - startY);
+    sheet.style.transform = `translateY(${dy}px)`;
+    $("#backdrop").style.opacity = String(Math.max(0, 1 - dy / 400));
+  });
+  const end = () => {
+    if (!dragging) return;
+    dragging = false;
+    const dy = Math.max(0, lastY - startY);
+    sheet.style.transition = "transform .3s cubic-bezier(.22,1,.36,1)";
+    $("#backdrop").style.opacity = "";
+    if (dy > 110 || speed > 0.6) {
+      sheet.style.transform = "translateY(110%)";
+      setTimeout(() => { closeSheet(); sheet.style.transition = ""; sheet.style.transform = ""; }, 220);
+    } else {
+      sheet.style.transform = "";
+      setTimeout(() => { sheet.style.transition = ""; }, 300);
+    }
+  };
+  sheet.addEventListener("pointerup", end);
+  sheet.addEventListener("pointercancel", end);
+})();
+
+/** Posune mapu tak, aby místo bylo vidět nad otevřeným panelem. */
+function keepVisible(p) {
+  requestAnimationFrame(() => {
+    const top = 140; // hlavička + filtry
+    const sheetTop = $("#sheet").getBoundingClientRect().top;
+    if (sheetTop - top < 70) return; // panel přes skoro celou obrazovku
+    const pt = map.latLngToContainerPoint([p.lat, p.lng]);
+    const target = L.point(map.getSize().x / 2, top + (sheetTop - top) / 2 + 24);
+    map.panBy(pt.subtract(target), { animate: true, duration: 0.35 });
+  });
 }
 // Nativní aplikace: tlačítko Zpět nejdřív zavře otevřený panel.
 window.mmBack = () => {
@@ -310,10 +381,7 @@ function reelView(p) {
   video.addEventListener("click", toggle);
   play.addEventListener("click", toggle);
   video.addEventListener("error", () => { video.remove(); play.remove(); box.style.background = "var(--grad)"; }, { once: true });
-  box.append(video, play,
-    h("a", { class: "author lg lens", href: p.reel_url, target: "_blank", rel: "noopener" },
-      h("span", { class: "ig", html: ICON.ig }),
-      h("span", {}, p.ig_author ? `@${p.ig_author}` : "Instagram", h("small", {}, "Otevřít reelsko na Instagramu"))));
+  box.append(video, play);
   return box;
 }
 
@@ -343,19 +411,26 @@ function openPlace(p) {
       h("div", {},
         h("h3", {}, p.name),
         h("div", { class: "meta" }, [p.city, p.country, d != null && fmtDist(d)].filter(Boolean).join(" · ")))),
-    reelView(p),
-    p.description && h("p", { class: "place-desc" }, p.description),
-    h("div", { class: `slot ${locked ? "" : "free"}` },
-      icon(locked ? "lock" : "spark"),
-      h("span", {},
-        `${p.contributor ? `Přidáno uživatelem ${p.contributor}` : "Přidáno komunitou"} ${fmtDate(p.reel_created_at)}. `,
-        locked ? `Nové reelsko k tomuto místu jde přidat od ${fmtDate(p.next_slot_at)}.` : "Místo je volné – přidej sem své reelsko a zviditelni se.")),
+    h("div", { class: "place-grid" },
+      reelView(p),
+      h("div", { class: "place-side" },
+        h("a", { class: "ig-link", href: p.reel_url, target: "_blank", rel: "noopener" },
+          h("span", { class: "ig", html: ICON.ig }),
+          h("span", {}, h("b", {}, p.ig_author ? `@${p.ig_author}` : "Instagram"), h("small", {}, "Otevřít reelsko"))),
+        p.description && h("p", { class: "place-desc" }, p.description),
+        h("div", { class: `slot ${locked ? "" : "free"}` },
+          icon(locked ? "lock" : "spark"),
+          h("span", {},
+            `${p.contributor ? `Přidal(a) ${p.contributor}` : "Přidáno komunitou"} · ${fmtDate(p.reel_created_at)}`,
+            h("br"),
+            locked ? `Další reelsko od ${fmtDate(p.next_slot_at)}` : "Místo je volné – přidej své reelsko")))),
     h("div", { class: "row grow", style: "margin-top:14px" },
       h("a", { class: "btn lg tint", href: navUrl(p), target: "_blank", rel: "noopener" }, icon("nav"), "Navigovat"),
       visitBtn),
     h("div", { style: "text-align:center;margin-top:6px" },
       h("button", { class: "btn btn-text", onclick: () => report(p) }, icon("flag"), "Nahlásit nevhodné reelsko")),
   );
+  keepVisible(p);
 }
 
 async function report(p) {

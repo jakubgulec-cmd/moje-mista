@@ -43,7 +43,10 @@
 html, body {
   margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg);
   font-family: var(--font); -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none; /* žádné gumové přetažení stránky */
 }
+body { position: fixed; inset: 0; -webkit-user-select: none; user-select: none; }
+input, textarea, .place-desc, .muted { -webkit-user-select: text; user-select: text; }
 button, input, textarea, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 a { color: inherit; }
@@ -133,7 +136,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .pill-btn.on { color: #fff; }
 .pill-btn.on svg { color: #fff; }
 
-.chips { display: flex; gap: 8px; overflow-x: auto; padding: 4px 14px 14px; scrollbar-width: none; }
+.chips { display: flex; gap: 8px; overflow-x: auto; padding: 4px 14px 14px; scrollbar-width: none; overscroll-behavior-x: contain; }
 .chips::-webkit-scrollbar { display: none; }
 .chip {
   flex: none; display: inline-flex; align-items: center; gap: 7px; padding: 9px 14px; border-radius: 999px;
@@ -218,7 +221,9 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
   animation: up .5s var(--ease);
 }
 @keyframes up { from { transform: translateY(80px) scale(.97); opacity: 0; } }
-.sheet-handle { width: 38px; height: 5px; border-radius: 3px; background: var(--fill-2); margin: 9px auto 0; }
+.sheet-handle { width: 38px; height: 5px; border-radius: 3px; background: var(--fill-2); margin: 9px auto 0; position: relative; }
+.sheet-handle::after { content: ""; position: absolute; inset: -12px -60px; } /* větší plocha pro chycení */
+.sheet-handle, .sheet-head { touch-action: none; cursor: grab; }
 .sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px 6px 20px; }
 .sheet-head h2 { margin: 0; font-size: 22px; font-weight: 750; letter-spacing: -.025em; overflow: hidden; text-overflow: ellipsis; }
 .sheet-body { overflow-y: auto; padding: 6px 16px 20px; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
@@ -283,7 +288,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .place-head h3 { margin: 0; font-size: 21px; font-weight: 780; letter-spacing: -.025em; line-height: 1.15; }
 .place-head .meta { color: var(--fg-2); font-size: 13px; margin-top: 3px; }
 .reel {
-  position: relative; width: min(100%, 300px); aspect-ratio: 9 / 16; max-height: 50vh; margin: 0 auto; border-radius: 26px; overflow: hidden;
+  position: relative; height: min(40vh, 520px); width: auto; max-width: 100%; aspect-ratio: 9 / 16; margin: 0 auto; border-radius: 26px; overflow: hidden;
   background: #111 center / cover no-repeat; box-shadow: 0 22px 44px -22px rgba(10,14,40,.6);
 }
 .reel video { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -298,6 +303,23 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .slot { display: flex; gap: 10px; align-items: center; margin-top: 12px; padding: 11px 14px; border-radius: 18px; font-size: 13px; color: var(--fg-2); background: var(--fill); }
 .slot.free { background: rgba(22,163,74,.1); color: #166534; }
 .slot svg { width: 18px; height: 18px; }
+
+
+/* Kompaktní detail místa: video vlevo, informace vpravo – mapa se špendlíkem zůstane nad panelem vidět */
+.place-grid { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: start; }
+.place-grid .reel { height: min(30vh, 230px); margin: 0; border-radius: 20px; box-shadow: 0 14px 28px -18px rgba(10,14,40,.6); }
+.place-grid .reel .play { width: 48px; height: 48px; margin: -24px 0 0 -24px; }
+.place-grid .reel .play svg { width: 20px; height: 20px; }
+.place-side { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.place-side .place-desc { margin: 0; font-size: 14px; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+.place-side .slot { margin: 0; padding: 9px 11px; font-size: 12px; line-height: 1.4; border-radius: 14px; align-items: flex-start; }
+.place-side .slot svg { width: 16px; height: 16px; margin-top: 1px; }
+.ig-link { display: flex; align-items: center; gap: 9px; text-decoration: none; color: var(--fg); }
+.ig-link .ig { width: 32px; height: 32px; flex: none; border-radius: 50%; display: grid; place-items: center; color: #fff; background: linear-gradient(45deg, #feda75, #fa7e1e, #d62976, #962fbf, #4f5bd5); }
+.ig-link .ig svg { width: 17px; height: 17px; }
+.ig-link b { display: block; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ig-link small { display: block; font-size: 12px; color: var(--fg-2); }
+.ig-link > span:last-child { min-width: 0; }
 
 /* Dlaždice kategorií (tipy) */
 .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
